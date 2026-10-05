@@ -1,38 +1,46 @@
-/* 1. Сжимаем боковое меню до минимума и фиксируем слева */
-header[role="banner"] {
-  width: 68px !important;
-  min-width: 68px !important;
-  flex-grow: 0 !important;
-  align-items: center !important;
-}
+/* ============ Лента шире ============ */
 
-header[role="banner"] > div > div > div {
-  align-items: center !important;
-}
-
-/* 2. Убираем пустое пространство между меню и лентой */
-/* Растягиваем главный контейнер на всю оставшуюся ширину */
-main[role="main"] > div {
-  width: 100% !important;
+/* Убираем ограничение ширины контейнера (обычно 990px) */
+main[role="main"] > div > div {
   max-width: 100% !important;
-  margin-left: 0 !important;
-}
-
-div[data-testid="primaryColumn"] {
-  max-width: 100% !important; /* Снимаем лимит ширины ленты */
   width: 100% !important;
-  border: none !important; /* Убираем рамки по бокам ленты */
 }
 
-/* 3. Опционально: Скрываем правую колонку (с рекомендациями и трендами),
-   если она вам не нужна и вы хотите, чтобы лента заняла 100% экрана */
-div[data-testid="sidebarColumn"] {
-  display: none !important;
+/* Колонка с постами занимает всё доступное место */
+div[data-testid="primaryColumn"] {
+  max-width: 100% !important;
+  width: 100% !important;
+  flex-grow: 1 !important;
+  margin-right: 0 !important;
 }
 
-/* 4. Увеличиваем медиа-контент внутри твитов для лучшей видимости */
-div[data-testid="tweetPhoto"],
-div[data-testid="videoComponent"] {
-  max-height: 80vh !important; /* Позволяет картинкам быть крупнее по вертикали */
-  border-radius: 8px !important;
+/* Немного увеличиваем сами посты — внутренние отступы поуже */
+div[data-testid="cellInnerDiv"] {
+  padding-left: 8px !important;
+  padding-right: 8px !important;
+}
+
+/* ============ Прячем правую панель при узком окне ============ */
+
+/* Окно уже 1300px — скрываем панель полностью */
+@media (max-width: 1300px) {
+  div[data-testid="sidebarColumn"] {
+    display: none !important;
+  }
+}
+
+/* Окно уже 1000px — дополнительно сворачиваем левое меню до иконок */
+@media (max-width: 1000px) {
+  header[role="banner"] {
+    width: 68px !important;
+  }
+  /* Прячем подписи у кнопок меню */
+  header[role="banner"] nav a > div > div[dir="auto"],
+  header[role="banner"] nav a span {
+    display: none !important;
+  }
+  /* Кнопка "Опубликовать" превращается в круглую иконку */
+  header[role="banner"] a[data-testid="SideNav_NewTweet_Button"] span {
+    display: none !important;
+  }
 }
