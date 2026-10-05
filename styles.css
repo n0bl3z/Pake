@@ -1,46 +1,62 @@
-/* ============ Лента шире ============ */
+/* ============ Убираем мёртвые зоны ============ */
 
-/* Убираем ограничение ширины контейнера (обычно 990px) */
+/* Убираем боковые отступы у главного контейнера — контент от края до края */
+main[role="main"] {
+  align-items: stretch !important;
+}
+main[role="main"] > div {
+  width: 100% !important;
+  max-width: 100% !important;
+  padding: 0 !important;
+}
 main[role="main"] > div > div {
+  margin: 0 !important;
+  justify-content: flex-start !important;
+}
+
+/* Меньше воздуха между постами и краями колонки */
+section[role="region"] > div > div {
+  padding-left: 4px !important;
+  padding-right: 4px !important;
+}
+
+/* Текст поста тоже растягиваем на всю ширину */
+div[data-testid="tweetText"] {
   max-width: 100% !important;
+}
+
+/* ============ Фото и видео крупнее ============ */
+
+/* Снимаем ограничение высоты у фото — X обрезает их под ~16:9 */
+div[data-testid="tweetPhoto"] {
+  max-height: none !important;
+}
+div[data-testid="tweetPhoto"] img {
+  object-fit: contain !important;   /* показывать фото целиком, без обрезки */
+  max-height: 90vh !important;      /* но не выше экрана */
   width: 100% !important;
 }
 
-/* Колонка с постами занимает всё доступное место */
-div[data-testid="primaryColumn"] {
-  max-width: 100% !important;
+/* Снимаем фиксированное соотношение сторон у контейнера медиа */
+div[data-testid="tweetPhoto"] > div,
+div[data-testid="tweetPhoto"] [style*="padding-bottom"] {
+  padding-bottom: 0 !important;
+  aspect-ratio: auto !important;
+  height: auto !important;
+}
+
+/* Видео — шире и без жёсткого кропа */
+div[data-testid="videoPlayer"],
+div[data-testid="videoComponent"] {
+  max-height: 90vh !important;
+}
+div[data-testid="videoPlayer"] video,
+div[data-testid="videoComponent"] video {
+  object-fit: contain !important;
   width: 100% !important;
-  flex-grow: 1 !important;
-  margin-right: 0 !important;
 }
 
-/* Немного увеличиваем сами посты — внутренние отступы поуже */
-div[data-testid="cellInnerDiv"] {
-  padding-left: 8px !important;
-  padding-right: 8px !important;
-}
-
-/* ============ Прячем правую панель при узком окне ============ */
-
-/* Окно уже 1300px — скрываем панель полностью */
-@media (max-width: 1300px) {
-  div[data-testid="sidebarColumn"] {
-    display: none !important;
-  }
-}
-
-/* Окно уже 1000px — дополнительно сворачиваем левое меню до иконок */
-@media (max-width: 1000px) {
-  header[role="banner"] {
-    width: 68px !important;
-  }
-  /* Прячем подписи у кнопок меню */
-  header[role="banner"] nav a > div > div[dir="auto"],
-  header[role="banner"] nav a span {
-    display: none !important;
-  }
-  /* Кнопка "Опубликовать" превращается в круглую иконку */
-  header[role="banner"] a[data-testid="SideNav_NewTweet_Button"] span {
-    display: none !important;
-  }
+/* Сетки из нескольких фото — чуть плотнее */
+div[data-testid="tweetPhoto"] [role="group"] {
+  gap: 2px !important;
 }
