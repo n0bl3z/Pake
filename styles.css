@@ -1,0 +1,15 @@
+/* Базовое состояние боковой панели */
+header[role="banner"] {
+    width: 15px !important;
+    opacity: 0.2;
+    transition: all 0.2s ease-in-out;
+    overflow: hidden;
+    z-index: 1000;
+}
+
+/* При наведении курсора панель раскрывается */
+header[role="banner"]:hover {
+    width: 68px !important;
+    opacity: 1;
+    background-color: rgba(0, 0, 0, 0.85);
+}
