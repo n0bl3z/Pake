@@ -1,15 +1,38 @@
-/* Базовое состояние боковой панели */
+/* 1. Сжимаем боковое меню до минимума и фиксируем слева */
 header[role="banner"] {
-    width: 15px !important;
-    opacity: 0.2;
-    transition: all 0.2s ease-in-out;
-    overflow: hidden;
-    z-index: 1000;
+    width: 68px !important;
+    min-width: 68px !important;
+    flex-grow: 0 !important;
+    align-items: center !important;
 }
 
-/* При наведении курсора панель раскрывается */
-header[role="banner"]:hover {
-    width: 68px !important;
-    opacity: 1;
-    background-color: rgba(0, 0, 0, 0.85);
+header[role="banner"] > div > div > div {
+    align-items: center !important;
+}
+
+/* 2. Убираем пустое пространство между меню и лентой */
+/* Растягиваем главный контейнер на всю оставшуюся ширину */
+main[role="main"] > div {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-left: 0 !important;
+}
+
+div[data-testid="primaryColumn"] {
+    max-width: 100% !important; /* Снимаем лимит ширины ленты */
+    width: 100% !important;
+    border: none !important; /* Убираем рамки по бокам ленты */
+}
+
+/* 3. Опционально: Скрываем правую колонку (с рекомендациями и трендами),
+   если она вам не нужна и вы хотите, чтобы лента заняла 100% экрана */
+div[data-testid="sidebarColumn"] {
+    display: none !important;
+}
+
+/* 4. Увеличиваем медиа-контент внутри твитов для лучшей видимости */
+div[data-testid="tweetPhoto"], 
+div[data-testid="videoComponent"] {
+    max-height: 80vh !important; /* Позволяет картинкам быть крупнее по вертикали */
+    border-radius: 8px !important;
 }
