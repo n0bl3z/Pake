@@ -1,7 +1,7 @@
 (function () {
-    'use strict';
+  "use strict";
 
-    const css = `
+  const css = `
         /* ====== Левая панель: спрятана за край ====== */
         body.hide-nav header[role="banner"] {
             position: fixed !important;
@@ -74,48 +74,60 @@
         }
     `;
 
-    // Замена GM_addStyle
-    function addStyle(text) {
-        const style = document.createElement('style');
-        style.textContent = text;
-        (document.head || document.documentElement).appendChild(style);
-    }
+  // Замена GM_addStyle
+  function addStyle(text) {
+    const style = document.createElement("style");
+    style.textContent = text;
+    (document.head || document.documentElement).appendChild(style);
+  }
 
-    // Скрипт в Pake может выполниться до появления DOM — ждём
-    function onReady(fn) {
-        if (document.documentElement) fn();
-        else new MutationObserver((_, obs) => {
-            if (document.documentElement) { obs.disconnect(); fn(); }
-        }).observe(document, { childList: true });
-    }
+  // Скрипт в Pake может выполниться до появления DOM — ждём
+  function onReady(fn) {
+    if (document.documentElement) fn();
+    else
+      new MutationObserver((_, obs) => {
+        if (document.documentElement) {
+          obs.disconnect();
+          fn();
+        }
+      }).observe(document, { childList: true });
+  }
 
-    onReady(addStyle.bind(null, css));
+  onReady(addStyle.bind(null, css));
 
-    // Включаем режим скрытой панели
-    const applyNav = () => document.body.classList.add('hide-nav');
-    if (document.body) applyNav();
-    else new MutationObserver((_, obs) => {
-        if (document.body) { applyNav(); obs.disconnect(); }
+  // Включаем режим скрытой панели
+  const applyNav = () => document.body.classList.add("hide-nav");
+  if (document.body) applyNav();
+  else
+    new MutationObserver((_, obs) => {
+      if (document.body) {
+        applyNav();
+        obs.disconnect();
+      }
     }).observe(document.documentElement, { childList: true });
 
-    // Открытие/закрытие панели по курсору
-    let wired = false;
-    function wireNav() {
-        const header = document.querySelector('header[role="banner"]');
-        if (!header || wired) return;
-        wired = true;
-        header.addEventListener('mouseenter', () => header.classList.add('nav-open'));
-        header.addEventListener('mouseleave', () => header.classList.remove('nav-open'));
-    }
-    const navTimer = setInterval(() => {
-        wireNav();
-        if (wired) clearInterval(navTimer);
-    }, 500);
+  // Открытие/закрытие панели по курсору
+  let wired = false;
+  function wireNav() {
+    const header = document.querySelector('header[role="banner"]');
+    if (!header || wired) return;
+    wired = true;
+    header.addEventListener("mouseenter", () =>
+      header.classList.add("nav-open"),
+    );
+    header.addEventListener("mouseleave", () =>
+      header.classList.remove("nav-open"),
+    );
+  }
+  const navTimer = setInterval(() => {
+    wireNav();
+    if (wired) clearInterval(navTimer);
+  }, 500);
 
-    // Alt+B — включить/выключить режим скрытой панели
-    window.addEventListener('keydown', (e) => {
-        if (e.altKey && e.code === 'KeyB') {
-            document.body.classList.toggle('hide-nav');
-        }
-    });
+  // Alt+B — включить/выключить режим скрытой панели
+  window.addEventListener("keydown", (e) => {
+    if (e.altKey && e.code === "KeyB") {
+      document.body.classList.toggle("hide-nav");
+    }
+  });
 })();
