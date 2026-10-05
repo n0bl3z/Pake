@@ -32,8 +32,8 @@ div[data-testid="tweetPhoto"] {
   max-height: none !important;
 }
 div[data-testid="tweetPhoto"] img {
-  object-fit: contain !important;   /* показывать фото целиком, без обрезки */
-  max-height: 90vh !important;      /* но не выше экрана */
+  object-fit: contain !important; /* показывать фото целиком, без обрезки */
+  max-height: 90vh !important; /* но не выше экрана */
   width: 100% !important;
 }
 
