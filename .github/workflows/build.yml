@@ -1,6 +1,6 @@
 name: Build Pake App
 on:
-  workflow_dispatch: # Позволяет запускать сборку вручную
+  workflow_dispatch:
 
 jobs:
   build-windows:
@@ -24,4 +24,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Twitter-Windows
-          path: "*.exe" # Сохраняет готовый установщик
+          path: |
+            **/*.exe
+            **/*.msi
