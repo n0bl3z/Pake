@@ -1,62 +1,97 @@
 (function () {
-    'use strict';
+  "use strict";
 
-    // ====== Видео: не даём X ставить на паузу, пока оно на экране ======
-    (function keepVideoPlaying() {
-        const DEBUG = false; // true — писать в консоль, кто и когда вызывает паузу
-        const origPause = HTMLMediaElement.prototype.pause;
-        const origPlay = HTMLMediaElement.prototype.play;
+  // ====== Видео: не даём X ставить на паузу, пока оно на экране ======
+  (function keepVideoPlaying() {
+    const DEBUG = false; // true — писать в консоль, кто и когда вызывает паузу
+    const origPause = HTMLMediaElement.prototype.pause;
+    const origPlay = HTMLMediaElement.prototype.play;
 
-        // Ручные действия пользователя (клик, перемотка, K / пробел)
-        let lastUserAction = 0;
-        let pointerDown = false;
-        const mark = () => { lastUserAction = Date.now(); };
-        window.addEventListener('pointerdown', () => { pointerDown = true; mark(); }, true);
-        ['pointerup', 'pointercancel', 'mouseup', 'click', 'touchstart'].forEach((t) =>
-            window.addEventListener(t, () => { pointerDown = false; mark(); }, true)
-        );
-        window.addEventListener('keydown', (e) => {
-            if (e.code === 'KeyK' || e.code === 'Space') mark();
-        }, true);
-        const userIsActing = () => pointerDown || Date.now() - lastUserAction < 800;
+    // Ручные действия пользователя (клик, перемотка, K / пробел)
+    let lastUserAction = 0;
+    let pointerDown = false;
+    const mark = () => {
+      lastUserAction = Date.now();
+    };
+    window.addEventListener(
+      "pointerdown",
+      () => {
+        pointerDown = true;
+        mark();
+      },
+      true,
+    );
+    ["pointerup", "pointercancel", "mouseup", "click", "touchstart"].forEach(
+      (t) =>
+        window.addEventListener(
+          t,
+          () => {
+            pointerDown = false;
+            mark();
+          },
+          true,
+        ),
+    );
+    window.addEventListener(
+      "keydown",
+      (e) => {
+        if (e.code === "KeyK" || e.code === "Space") mark();
+      },
+      true,
+    );
+    const userIsActing = () => pointerDown || Date.now() - lastUserAction < 800;
 
-        const isOnScreen = (v) => {
-            const r = v.getBoundingClientRect();
-            return r.width > 0 && r.height > 0 &&
-                r.bottom > 0 && r.top < window.innerHeight &&
-                r.right > 0 && r.left < window.innerWidth;
-        };
+    const isOnScreen = (v) => {
+      const r = v.getBoundingClientRect();
+      return (
+        r.width > 0 &&
+        r.height > 0 &&
+        r.bottom > 0 &&
+        r.top < window.innerHeight &&
+        r.right > 0 &&
+        r.left < window.innerWidth
+      );
+    };
 
-        // 1) Блокируем программные вызовы pause()
-        HTMLMediaElement.prototype.pause = function () {
-            try {
-                if (this instanceof HTMLVideoElement && !document.hidden &&
-                    !userIsActing() && isOnScreen(this)) {
-                    if (DEBUG) console.log('[x-wide] pause() blocked', new Error().stack);
-                    return;
-                }
-            } catch (e) { }
-            return origPause.apply(this, arguments);
-        };
+    // 1) Блокируем программные вызовы pause()
+    HTMLMediaElement.prototype.pause = function () {
+      try {
+        if (
+          this instanceof HTMLVideoElement &&
+          !document.hidden &&
+          !userIsActing() &&
+          isOnScreen(this)
+        ) {
+          if (DEBUG) console.log("[x-wide] pause() blocked", new Error().stack);
+          return;
+        }
+      } catch (e) {}
+      return origPause.apply(this, arguments);
+    };
 
-        // 2) Если паузу всё же обошли другим путём — сразу возобновляем
-        const resumes = new WeakMap();
-        document.addEventListener('pause', (e) => {
-            const v = e.target;
-            if (!(v instanceof HTMLVideoElement)) return;
-            if (document.hidden || v.ended || userIsActing() || !isOnScreen(v)) return;
-            const now = Date.now();
-            const hist = (resumes.get(v) || []).filter((t) => now - t < 1000);
-            if (hist.length >= 5) return; // защита от бесконечной борьбы с X
-            hist.push(now);
-            resumes.set(v, hist);
-            if (DEBUG) console.log('[x-wide] pause event -> resume');
-            const pr = origPlay.call(v);
-            if (pr && pr.catch) pr.catch(() => { });
-        }, true);
-    })();
+    // 2) Если паузу всё же обошли другим путём — сразу возобновляем
+    const resumes = new WeakMap();
+    document.addEventListener(
+      "pause",
+      (e) => {
+        const v = e.target;
+        if (!(v instanceof HTMLVideoElement)) return;
+        if (document.hidden || v.ended || userIsActing() || !isOnScreen(v))
+          return;
+        const now = Date.now();
+        const hist = (resumes.get(v) || []).filter((t) => now - t < 1000);
+        if (hist.length >= 5) return; // защита от бесконечной борьбы с X
+        hist.push(now);
+        resumes.set(v, hist);
+        if (DEBUG) console.log("[x-wide] pause event -> resume");
+        const pr = origPlay.call(v);
+        if (pr && pr.catch) pr.catch(() => {});
+      },
+      true,
+    );
+  })();
 
-    const css = `
+  const css = `
         /* ====== Левая панель: спрятана за край ====== */
         body.hide-nav header[role="banner"] {
             position: fixed !important;
@@ -150,137 +185,158 @@
         }
     `;
 
-    // Замена GM_addStyle
-    function addStyle(text) {
-        const style = document.createElement('style');
-        style.textContent = text;
-        (document.head || document.documentElement).appendChild(style);
+  // Замена GM_addStyle
+  function addStyle(text) {
+    const style = document.createElement("style");
+    style.textContent = text;
+    (document.head || document.documentElement).appendChild(style);
+  }
+
+  // Скрипт в Pake может выполниться до появления DOM — ждём
+  function onReady(fn) {
+    if (document.documentElement) fn();
+    else
+      new MutationObserver((_, obs) => {
+        if (document.documentElement) {
+          obs.disconnect();
+          fn();
+        }
+      }).observe(document, { childList: true });
+  }
+
+  onReady(addStyle.bind(null, css));
+
+  // Режим скрытой панели. Класс на body периодически проверяем:
+  // после навигации «назад» X может пересоздать элементы и сбросить его.
+  let navEnabled = true;
+  const applyNav = () => {
+    if (
+      navEnabled &&
+      document.body &&
+      !document.body.classList.contains("hide-nav")
+    ) {
+      document.body.classList.add("hide-nav");
     }
+  };
+  applyNav();
+  setInterval(applyNav, 500);
+  window.addEventListener("popstate", applyNav);
 
-    // Скрипт в Pake может выполниться до появления DOM — ждём
-    function onReady(fn) {
-        if (document.documentElement) fn();
-        else new MutationObserver((_, obs) => {
-            if (document.documentElement) { obs.disconnect(); fn(); }
-        }).observe(document, { childList: true });
+  // Открытие/закрытие панели по курсору через делегирование событий:
+  // работает с любым header, даже если X пересоздал его (кнопка «назад»).
+  const HEADER_SEL = 'header[role="banner"]';
+  document.addEventListener(
+    "mouseover",
+    (e) => {
+      const h = e.target.closest && e.target.closest(HEADER_SEL);
+      if (h) h.classList.add("nav-open");
+    },
+    true,
+  );
+  document.addEventListener(
+    "mouseout",
+    (e) => {
+      const h = e.target.closest && e.target.closest(HEADER_SEL);
+      if (h && !(e.relatedTarget && h.contains(e.relatedTarget))) {
+        h.classList.remove("nav-open");
+      }
+    },
+    true,
+  );
+
+  // Alt+B — включить/выключить режим скрытой панели
+  window.addEventListener("keydown", (e) => {
+    if (e.altKey && e.code === "KeyB") {
+      navEnabled = !navEnabled;
+      if (document.body) document.body.classList.toggle("hide-nav", navEnabled);
     }
+  });
 
-    onReady(addStyle.bind(null, css));
+  // Растягиваем медиа на всю ширину карточки (под аватар)
+  function widenMedia(article) {
+    const avatar = article.querySelector('[data-testid="Tweet-User-Avatar"]');
+    const nameEl = article.querySelector('[data-testid="User-Name"]');
+    if (!avatar || !nameEl) return;
 
-    // Режим скрытой панели. Класс на body периодически проверяем:
-    // после навигации «назад» X может пересоздать элементы и сбросить его.
-    let navEnabled = true;
-    const applyNav = () => {
-        if (navEnabled && document.body && !document.body.classList.contains('hide-nav')) {
-            document.body.classList.add('hide-nav');
-        }
-    };
-    applyNav();
-    setInterval(applyNav, 500);
-    window.addEventListener('popstate', applyNav);
+    const media = article.querySelectorAll(
+      '[data-testid="tweetPhoto"], [data-testid="videoPlayer"], [data-testid="card.wrapper"]',
+    );
+    if (!media.length) return;
 
-    // Открытие/закрытие панели по курсору через делегирование событий:
-    // работает с любым header, даже если X пересоздал его (кнопка «назад»).
-    const HEADER_SEL = 'header[role="banner"]';
-    document.addEventListener('mouseover', (e) => {
-        const h = e.target.closest && e.target.closest(HEADER_SEL);
-        if (h) h.classList.add('nav-open');
-    }, true);
-    document.addEventListener('mouseout', (e) => {
-        const h = e.target.closest && e.target.closest(HEADER_SEL);
-        if (h && !(e.relatedTarget && h.contains(e.relatedTarget))) {
-            h.classList.remove('nav-open');
-        }
-    }, true);
+    // Колонка контента = ближайший общий предок имени автора и медиа
+    let column = nameEl.parentElement;
+    while (column && !column.contains(media[0])) column = column.parentElement;
+    if (!column) return;
 
-    // Alt+B — включить/выключить режим скрытой панели
-    window.addEventListener('keydown', (e) => {
-        if (e.altKey && e.code === 'KeyB') {
-            navEnabled = !navEnabled;
-            if (document.body) document.body.classList.toggle('hide-nav', navEnabled);
-        }
+    const offset =
+      column.getBoundingClientRect().left - avatar.getBoundingClientRect().left;
+    if (offset <= 0) return;
+
+    media.forEach((m) => {
+      // Прямой потомок колонки, внутри которого лежит медиа
+      let block = m;
+      while (block.parentElement && block.parentElement !== column)
+        block = block.parentElement;
+      if (block.parentElement !== column || block.dataset.wide === "1") return;
+      block.dataset.wide = "1";
+      block.classList.add("x-media-wide");
+      block.style.marginLeft = `-${offset}px`;
+      block.style.width = `calc(100% + ${offset}px)`;
+      block.style.maxWidth = "none";
+      block.style.setProperty("--xoff", offset + "px");
     });
+  }
 
-    // Растягиваем медиа на всю ширину карточки (под аватар)
-    function widenMedia(article) {
-        const avatar = article.querySelector('[data-testid="Tweet-User-Avatar"]');
-        const nameEl = article.querySelector('[data-testid="User-Name"]');
-        if (!avatar || !nameEl) return;
+  // Подгоняем блок видео/фото: ширина = min(вся ширина, 90% высоты окна * пропорции)
+  function fitMedia(article) {
+    article
+      .querySelectorAll(
+        '[data-testid="videoPlayer"], [data-testid="tweetPhoto"]',
+      )
+      .forEach((player) => {
+        const block = player.closest('[data-wide="1"]');
+        if (!block || block.dataset.vfit === "1") return;
 
-        const media = article.querySelectorAll(
-            '[data-testid="tweetPhoto"], [data-testid="videoPlayer"], [data-testid="card.wrapper"]'
-        );
-        if (!media.length) return;
+        // Сетку из нескольких фото не трогаем — X раскладывает её сам
+        if (block.querySelectorAll('[data-testid="tweetPhoto"]').length > 1)
+          return;
 
-        // Колонка контента = ближайший общий предок имени автора и медиа
-        let column = nameEl.parentElement;
-        while (column && !column.contains(media[0])) column = column.parentElement;
-        if (!column) return;
+        const r = player.getBoundingClientRect();
+        if (r.width < 50 || r.height < 50) return; // ещё не отрисован — повторим
+        const ratio = r.width / r.height;
+        if (ratio < 0.2 || ratio > 5) return;
+        block.style.setProperty("--ar", ratio.toFixed(4));
+        block.dataset.vfit = "1";
 
-        const offset = column.getBoundingClientRect().left - avatar.getBoundingClientRect().left;
-        if (offset <= 0) return;
+        // X сам сужает высокие медиа (max-height/max-width у обёрток).
+        // Снимаем эти ограничения и растягиваем узкие обёртки на весь блок.
+        const bw = block.getBoundingClientRect().width;
+        let el = player;
+        while (el && el !== block) {
+          el.style.setProperty("max-width", "none", "important");
+          el.style.setProperty("max-height", "none", "important");
+          if (el.getBoundingClientRect().width < bw - 8) {
+            el.style.setProperty("width", "100%", "important");
+          }
+          el = el.parentElement;
+        }
+      });
+  }
 
-        media.forEach((m) => {
-            // Прямой потомок колонки, внутри которого лежит медиа
-            let block = m;
-            while (block.parentElement && block.parentElement !== column) block = block.parentElement;
-            if (block.parentElement !== column || block.dataset.wide === '1') return;
-            block.dataset.wide = '1';
-            block.classList.add('x-media-wide');
-            block.style.marginLeft = `-${offset}px`;
-            block.style.width = `calc(100% + ${offset}px)`;
-            block.style.maxWidth = 'none';
-            block.style.setProperty('--xoff', offset + 'px');
-        });
-    }
-
-    // Подгоняем блок видео/фото: ширина = min(вся ширина, 90% высоты окна * пропорции)
-    function fitMedia(article) {
-        article
-            .querySelectorAll('[data-testid="videoPlayer"], [data-testid="tweetPhoto"]')
-            .forEach((player) => {
-                const block = player.closest('[data-wide="1"]');
-                if (!block || block.dataset.vfit === '1') return;
-
-                // Сетку из нескольких фото не трогаем — X раскладывает её сам
-                if (block.querySelectorAll('[data-testid="tweetPhoto"]').length > 1) return;
-
-                const r = player.getBoundingClientRect();
-                if (r.width < 50 || r.height < 50) return; // ещё не отрисован — повторим
-                const ratio = r.width / r.height;
-                if (ratio < 0.2 || ratio > 5) return;
-                block.style.setProperty('--ar', ratio.toFixed(4));
-                block.dataset.vfit = '1';
-
-                // X сам сужает высокие медиа (max-height/max-width у обёрток).
-                // Снимаем эти ограничения и растягиваем узкие обёртки на весь блок.
-                const bw = block.getBoundingClientRect().width;
-                let el = player;
-                while (el && el !== block) {
-                    el.style.setProperty('max-width', 'none', 'important');
-                    el.style.setProperty('max-height', 'none', 'important');
-                    if (el.getBoundingClientRect().width < bw - 8) {
-                        el.style.setProperty('width', '100%', 'important');
-                    }
-                    el = el.parentElement;
-                }
-            });
-    }
-
-    let rafPending = false;
-    function scanTweets() {
-        if (rafPending) return;
-        rafPending = true;
-        requestAnimationFrame(() => {
-            rafPending = false;
-            document.querySelectorAll('article[data-testid="tweet"]').forEach((a) => {
-                widenMedia(a);
-                fitMedia(a);
-            });
-        });
-    }
-    new MutationObserver(scanTweets).observe(document.documentElement, {
-        childList: true,
-        subtree: true,
+  let rafPending = false;
+  function scanTweets() {
+    if (rafPending) return;
+    rafPending = true;
+    requestAnimationFrame(() => {
+      rafPending = false;
+      document.querySelectorAll('article[data-testid="tweet"]').forEach((a) => {
+        widenMedia(a);
+        fitMedia(a);
+      });
     });
+  }
+  new MutationObserver(scanTweets).observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+  });
 })();
