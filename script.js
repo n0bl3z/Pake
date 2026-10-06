@@ -130,12 +130,17 @@
             max-height: 85vh !important;
         }
 
-        /* ====== Видео: плеер по пропорциям ролика, но не выше окна ====== */
+        /* ====== Видео и фото: по пропорциям, но не выше окна ====== */
         [data-vfit="1"] {
             --w: min(calc(100% + var(--xoff, 0px)), calc(90vh * var(--ar, 1)));
             width: var(--w) !important;
             margin-left: calc((100% + var(--xoff, 0px) - var(--w)) / 2 - var(--xoff, 0px)) !important;
             max-width: none !important;
+        }
+
+        /* Фото внутри подогнанного блока — без собственного потолка по высоте */
+        [data-vfit="1"] div[data-testid="tweetPhoto"] img {
+            max-height: none !important;
         }
 
         /* ====== Видео ====== */
@@ -229,31 +234,37 @@
         });
     }
 
-    // Подгоняем блок видео: ширина = min(вся ширина, 90% высоты окна * пропорции)
-    function fitVideo(article) {
-        article.querySelectorAll('[data-testid="videoPlayer"]').forEach((player) => {
-            const block = player.closest('[data-wide="1"]');
-            if (!block || block.dataset.vfit === '1') return;
-            const r = player.getBoundingClientRect();
-            if (r.width < 50 || r.height < 50) return; // ещё не отрисован — повторим
-            const ratio = r.width / r.height;
-            if (ratio < 0.2 || ratio > 5) return;
-            block.style.setProperty('--ar', ratio.toFixed(4));
-            block.dataset.vfit = '1';
+    // Подгоняем блок видео/фото: ширина = min(вся ширина, 90% высоты окна * пропорции)
+    function fitMedia(article) {
+        article
+            .querySelectorAll('[data-testid="videoPlayer"], [data-testid="tweetPhoto"]')
+            .forEach((player) => {
+                const block = player.closest('[data-wide="1"]');
+                if (!block || block.dataset.vfit === '1') return;
 
-            // X сам сужает высокие ролики (max-height/max-width у обёрток).
-            // Снимаем эти ограничения и растягиваем узкие обёртки на весь блок.
-            const bw = block.getBoundingClientRect().width;
-            let el = player;
-            while (el && el !== block) {
-                el.style.setProperty('max-width', 'none', 'important');
-                el.style.setProperty('max-height', 'none', 'important');
-                if (el.getBoundingClientRect().width < bw - 8) {
-                    el.style.setProperty('width', '100%', 'important');
+                // Сетку из нескольких фото не трогаем — X раскладывает её сам
+                if (block.querySelectorAll('[data-testid="tweetPhoto"]').length > 1) return;
+
+                const r = player.getBoundingClientRect();
+                if (r.width < 50 || r.height < 50) return; // ещё не отрисован — повторим
+                const ratio = r.width / r.height;
+                if (ratio < 0.2 || ratio > 5) return;
+                block.style.setProperty('--ar', ratio.toFixed(4));
+                block.dataset.vfit = '1';
+
+                // X сам сужает высокие медиа (max-height/max-width у обёрток).
+                // Снимаем эти ограничения и растягиваем узкие обёртки на весь блок.
+                const bw = block.getBoundingClientRect().width;
+                let el = player;
+                while (el && el !== block) {
+                    el.style.setProperty('max-width', 'none', 'important');
+                    el.style.setProperty('max-height', 'none', 'important');
+                    if (el.getBoundingClientRect().width < bw - 8) {
+                        el.style.setProperty('width', '100%', 'important');
+                    }
+                    el = el.parentElement;
                 }
-                el = el.parentElement;
-            }
-        });
+            });
     }
 
     let rafPending = false;
@@ -264,7 +275,7 @@
             rafPending = false;
             document.querySelectorAll('article[data-testid="tweet"]').forEach((a) => {
                 widenMedia(a);
-                fitVideo(a);
+                fitMedia(a);
             });
         });
     }
