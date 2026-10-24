@@ -1,0 +1,109 @@
+name: Build Pake app (Windows)
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "Адрес сайта"
+        type: string
+        required: true
+        default: "https://x.com"
+      name:
+        description: "Название приложения"
+        type: string
+        required: true
+        default: "X"
+      inject:
+        description: "Файл со скриптом/стилями из репозитория (через запятую, если несколько)"
+        type: string
+        required: false
+        default: "x-wide.js"
+      extra_args:
+        description: "Доп. параметры Pake (например: --width 600 --height 900 --hide-title-bar)"
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-pake
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    env:
+      # Быстрее компиляция: без LTO и с параллельной кодогенерацией.
+      # Для обёртки над веб-страницей разница в размере/скорости незаметна.
+      CARGO_PROFILE_RELEASE_LTO: "off"
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
+      CARGO_PROFILE_RELEASE_OPT_LEVEL: "2"
+      CARGO_INCREMENTAL: "0"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Pake CLI
+        shell: bash
+        run: |
+          npm install -g pake-cli
+          PAKE_DIR="$(npm root -g)/pake-cli"
+          if command -v cygpath >/dev/null 2>&1; then PAKE_DIR="$(cygpath -m "$PAKE_DIR")"; fi
+          echo "PAKE_DIR=$PAKE_DIR" >> "$GITHUB_ENV"
+          echo "Pake: $PAKE_DIR"
+
+      # Кэш зависимостей Rust и уже собранных крейтов — главный ускоритель
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ env.PAKE_DIR }}/src-tauri -> target
+          cache-on-failure: true
+
+      # Кэш инструментов упаковки MSI (WiX и т.п.), чтобы не качать каждый раз
+      - name: Cache Tauri bundler tools
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\tauri
+          key: tauri-tools-${{ runner.os }}
+
+      - name: Build app
+        shell: bash
+        env:
+          APP_URL: ${{ inputs.url }}
+          APP_NAME: ${{ inputs.name }}
+          APP_INJECT: ${{ inputs.inject }}
+          APP_EXTRA: ${{ inputs.extra_args }}
+        run: |
+          ARGS=("$APP_URL" --name "$APP_NAME")
+          if [ -n "$APP_INJECT" ]; then
+            ARGS+=(--inject "$APP_INJECT")
+          fi
+          # shellcheck disable=SC2206
+          EXTRA=($APP_EXTRA)
+          echo "Running: pake ${ARGS[*]} ${EXTRA[*]}"
+          pake "${ARGS[@]}" "${EXTRA[@]}"
+          echo "--- Результат ---"
+          ls -la
+
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.name }}-Windows
+          path: |
+            *.msi
+            *.exe
+          if-no-files-found: error
+          retention-days: 14
