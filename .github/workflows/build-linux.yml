@@ -1,0 +1,113 @@
+name: Build Pake app (Linux)
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "Адрес сайта"
+        type: string
+        required: true
+        default: "https://x.com"
+      name:
+        description: "Название приложения"
+        type: string
+        required: true
+        default: "X"
+      inject:
+        description: "Файл со скриптом/стилями из репозитория (через запятую, если несколько)"
+        type: string
+        required: false
+        default: "x-wide.js"
+      extra_args:
+        description: "Доп. параметры Pake (например: --width 600 --height 900)"
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-pake-linux
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      # Быстрее компиляция: без LTO и с параллельной кодогенерацией.
+      CARGO_PROFILE_RELEASE_LTO: "off"
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
+      CARGO_PROFILE_RELEASE_OPT_LEVEL: "2"
+      CARGO_INCREMENTAL: "0"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Pake CLI
+        run: |
+          npm install -g pake-cli
+          PAKE_DIR="$(npm root -g)/pake-cli"
+          echo "PAKE_DIR=$PAKE_DIR" >> "$GITHUB_ENV"
+          echo "Pake: $PAKE_DIR"
+
+      # Кэш зависимостей Rust и уже собранных крейтов — главный ускоритель
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ env.PAKE_DIR }}/src-tauri -> target
+          cache-on-failure: true
+
+      - name: Build app
+        env:
+          APP_URL: ${{ inputs.url }}
+          APP_NAME: ${{ inputs.name }}
+          APP_INJECT: ${{ inputs.inject }}
+          APP_EXTRA: ${{ inputs.extra_args }}
+        run: |
+          ARGS=("$APP_URL" --name "$APP_NAME")
+          if [ -n "$APP_INJECT" ]; then
+            ARGS+=(--inject "$APP_INJECT")
+          fi
+          # shellcheck disable=SC2206
+          EXTRA=($APP_EXTRA)
+          echo "Running: pake ${ARGS[*]} ${EXTRA[*]}"
+          pake "${ARGS[@]}" "${EXTRA[@]}"
+          echo "--- Результат ---"
+          ls -la
+
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.name }}-Linux
+          path: |
+            *.AppImage
+            *.deb
+          if-no-files-found: error
+          retention-days: 14
