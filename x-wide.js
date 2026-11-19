@@ -1,6 +1,39 @@
 (function () {
     'use strict';
 
+    // ====== Безопасный доступ к localStorage ======
+    const store = {
+        get(key, fallback) {
+            try {
+                const v = localStorage.getItem(key);
+                return v === null ? fallback : v;
+            } catch (e) {
+                return fallback;
+            }
+        },
+        set(key, value) {
+            try {
+                localStorage.setItem(key, value);
+            } catch (e) { }
+        },
+    };
+
+    // ====== Ненавязчивый тост для обратной связи по хоткеям ======
+    let toastTimer = null;
+    function showToast(text) {
+        if (!document.body) return;
+        let el = document.getElementById('xw-toast');
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'xw-toast';
+            document.body.appendChild(el);
+        }
+        el.textContent = text;
+        el.classList.add('visible');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => el.classList.remove('visible'), 1600);
+    }
+
     // ====== Видео: не даём X ставить на паузу, пока оно на экране ======
     (function keepVideoPlaying() {
         const DEBUG = false; // true — писать в консоль, кто и когда вызывает паузу
@@ -54,27 +87,96 @@
             const pr = origPlay.call(v);
             if (pr && pr.catch) pr.catch(() => { });
         }, true);
+
+        // 3) Только одно видео со звуком одновременно: при включении звука у ролика
+        // ставим на паузу остальные играющие видео со звуком.
+        const silenceOthers = (active) => {
+            if (!(active instanceof HTMLVideoElement) || active.muted || active.volume === 0) return;
+            document.querySelectorAll('video').forEach((other) => {
+                if (other !== active && !other.paused && !other.muted && other.volume > 0) {
+                    origPause.call(other);
+                }
+            });
+        };
+        document.addEventListener('play', (e) => silenceOthers(e.target), true);
+        document.addEventListener('volumechange', (e) => {
+            if (e.target instanceof HTMLVideoElement && !e.target.paused) silenceOthers(e.target);
+        }, true);
     })();
 
     const css = `
-        /* ====== Левая панель: спрятана за край ====== */
-        body.hide-nav header[role="banner"] {
-            position: fixed !important;
-            top: 0 !important;
-            left: 0 !important;
-            bottom: 0 !important;
-            z-index: 1000 !important;
-            transform: translateX(calc(-100% + 14px)) !important;
-            transition: transform 0.22s ease !important;
-            height: 100% !important;
+        /* ====== Тонкий скроллбар для оконного режима ====== */
+        html {
+            scrollbar-width: thin;
         }
-        body.hide-nav header[role="banner"].nav-open {
-            transform: translateX(0) !important;
-            box-shadow: 4px 0 16px rgba(0, 0, 0, 0.35) !important;
+
+        /* ====== Тост уведомлений ====== */
+        #xw-toast {
+            position: fixed;
+            left: 50%;
+            bottom: 20px;
+            transform: translateX(-50%) translateY(10px);
+            z-index: 99999;
+            padding: 8px 14px;
+            border-radius: 999px;
+            background: rgba(20, 20, 24, 0.9);
+            color: #fff;
+            font: 500 13px/1.2 system-ui, -apple-system, sans-serif;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.16s ease, transform 0.16s ease;
+        }
+        #xw-toast.visible {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        /* ====== Левая панель: прячем за край только на десктопной ширине ====== */
+        @media (min-width: 500px) {
+            body.hide-nav header[role="banner"] {
+                position: fixed !important;
+                top: 0 !important;
+                left: 0 !important;
+                bottom: 0 !important;
+                z-index: 1000 !important;
+                background-color: var(--xw-bg, rgb(0, 0, 0)) !important;
+                border-right: 1px solid rgba(128, 128, 128, 0.22) !important;
+                transform: translateX(calc(-100% + 12px)) !important;
+                transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+                height: 100% !important;
+            }
+            body.hide-nav header[role="banner"]::after {
+                content: "";
+                position: absolute;
+                top: 50%;
+                right: 4px;
+                width: 3px;
+                height: 36px;
+                transform: translateY(-50%);
+                border-radius: 999px;
+                background: rgba(128, 128, 128, 0.45);
+                pointer-events: none;
+                transition: opacity 0.18s ease;
+            }
+            body.hide-nav header[role="banner"].nav-open {
+                transform: translateX(0) !important;
+                box-shadow: 6px 0 24px rgba(0, 0, 0, 0.45) !important;
+            }
+            body.hide-nav header[role="banner"].nav-open::after {
+                opacity: 0;
+            }
+        }
+
+        /* ====== Zen-режим (Alt+Z): убираем нижние плавающие дроверы ====== */
+        body.xw-zen div[data-testid="DMDrawer"],
+        body.xw-zen div[data-testid="GrokDrawer"] {
+            display: none !important;
         }
 
         /* ====== Контент во всю ширину ====== */
-        body.hide-nav main[role="main"] {
+        main[role="main"] {
             flex: 1 1 auto !important;
             width: 100% !important;
             max-width: 100% !important;
@@ -107,11 +209,14 @@
             padding-right: 0 !important;
         }
         article[data-testid="tweet"] {
-            padding-left: 6px !important;
-            padding-right: 6px !important;
+            padding-left: 8px !important;
+            padding-right: 8px !important;
         }
         .x-media-wide {
             box-sizing: border-box !important;
+            margin-left: calc(-1 * var(--xoff, 0px)) !important;
+            width: calc(100% + var(--xoff, 0px)) !important;
+            max-width: none !important;
         }
 
         /* ====== Правая панель — скрыта ====== */
@@ -189,39 +294,134 @@
         }).observe(document, { childList: true });
     }
 
-    onReady(addStyle.bind(null, css));
+    onReady(() => addStyle(css));
 
-    // Режим скрытой панели. Класс на body периодически проверяем:
-    // после навигации «назад» X может пересоздать элементы и сбросить его.
-    let navEnabled = true;
-    const applyNav = () => {
-        if (navEnabled && document.body && !document.body.classList.contains('hide-nav')) {
-            document.body.classList.add('hide-nav');
+    // ====== Режим скрытой панели, Zen-режим и фон темы ======
+    const NAV_STORAGE_KEY = 'xw-hide-nav';
+    const ZEN_STORAGE_KEY = 'xw-zen';
+    let navEnabled = store.get(NAV_STORAGE_KEY, '1') !== '0';
+    let zenEnabled = store.get(ZEN_STORAGE_KEY, '0') === '1';
+
+    const syncBodyState = () => {
+        if (!document.body) return;
+        if (document.body.classList.contains('hide-nav') !== navEnabled) {
+            document.body.classList.toggle('hide-nav', navEnabled);
+        }
+        if (document.body.classList.contains('xw-zen') !== zenEnabled) {
+            document.body.classList.toggle('xw-zen', zenEnabled);
+        }
+        const bg = getComputedStyle(document.body).backgroundColor;
+        if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') {
+            document.documentElement.style.setProperty('--xw-bg', bg);
         }
     };
-    applyNav();
-    setInterval(applyNav, 500);
-    window.addEventListener('popstate', applyNav);
 
-    // Открытие/закрытие панели по курсору через делегирование событий:
-    // работает с любым header, даже если X пересоздал его (кнопка «назад»).
+    const initBodyObserver = () => {
+        if (!document.body) return;
+        syncBodyState();
+        new MutationObserver(syncBodyState).observe(document.body, {
+            attributes: true,
+            attributeFilter: ['class', 'style'],
+        });
+    };
+
+    if (document.body) initBodyObserver();
+    else window.addEventListener('DOMContentLoaded', initBodyObserver, { once: true });
+    window.addEventListener('popstate', syncBodyState);
+
+    // Открытие/закрытие панели по курсору с небольшой задержкой на закрытие
     const HEADER_SEL = 'header[role="banner"]';
+    let closeTimer = null;
     document.addEventListener('mouseover', (e) => {
         const h = e.target.closest && e.target.closest(HEADER_SEL);
-        if (h) h.classList.add('nav-open');
+        if (!h) return;
+        if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
+        h.classList.add('nav-open');
     }, true);
     document.addEventListener('mouseout', (e) => {
         const h = e.target.closest && e.target.closest(HEADER_SEL);
         if (h && !(e.relatedTarget && h.contains(e.relatedTarget))) {
-            h.classList.remove('nav-open');
+            closeTimer = setTimeout(() => h.classList.remove('nav-open'), 180);
         }
     }, true);
 
-    // Alt+B — включить/выключить режим скрытой панели
+    // ====== Горячие клавиши для оконного режима (Pake) ======
+    const isTyping = (e) => {
+        const t = e.target;
+        return t instanceof Element && (
+            t.tagName === 'INPUT' ||
+            t.tagName === 'TEXTAREA' ||
+            t.isContentEditable
+        );
+    };
+
+    async function copyCurrentUrl() {
+        const url = location.href;
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(url);
+                showToast('Ссылка скопирована');
+                return;
+            }
+        } catch (e) { }
+        const ta = document.createElement('textarea');
+        ta.value = url;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+            document.execCommand('copy');
+            showToast('Ссылка скопирована');
+        } catch (e) {
+            showToast('Не удалось скопировать');
+        }
+        ta.remove();
+    }
+
     window.addEventListener('keydown', (e) => {
-        if (e.altKey && e.code === 'KeyB') {
+        if (!e.altKey || e.ctrlKey || e.metaKey) return;
+
+        // Alt+B — скрыть/закрепить левую панель
+        if (e.code === 'KeyB') {
+            e.preventDefault();
             navEnabled = !navEnabled;
-            if (document.body) document.body.classList.toggle('hide-nav', navEnabled);
+            store.set(NAV_STORAGE_KEY, navEnabled ? '1' : '0');
+            syncBodyState();
+            showToast(navEnabled ? 'Панель скрыта' : 'Панель закреплена');
+            return;
+        }
+
+        // Alt+Z — скрыть/показать плавающие дроверы (DM / Grok)
+        if (e.code === 'KeyZ') {
+            e.preventDefault();
+            zenEnabled = !zenEnabled;
+            store.set(ZEN_STORAGE_KEY, zenEnabled ? '1' : '0');
+            syncBodyState();
+            showToast(zenEnabled ? 'Дроверы скрыты' : 'Дроверы показаны');
+            return;
+        }
+
+        // Alt+C — скопировать текущий URL (удобно без адресной строки)
+        if (e.code === 'KeyC') {
+            e.preventDefault();
+            copyCurrentUrl();
+            return;
+        }
+
+        if (isTyping(e)) return;
+
+        // Alt+Left / Alt+Right — навигация Назад / Вперёд
+        if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+            history.back();
+        } else if (e.key === 'ArrowRight') {
+            e.preventDefault();
+            history.forward();
+        } else if (e.code === 'KeyT') {
+            // Alt+T — плавно наверх
+            e.preventDefault();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
     });
 
@@ -238,7 +438,7 @@
         while (column && !column.contains(el)) column = column.parentElement;
         if (!column) return null;
 
-        const offset = column.getBoundingClientRect().left - avatar.getBoundingClientRect().left;
+        const offset = Math.round(column.getBoundingClientRect().left - avatar.getBoundingClientRect().left);
         if (offset <= 0) return null;
 
         let block = el;
@@ -247,14 +447,13 @@
         return { block, offset };
     }
 
-    // Растягиваем блок на всю ширину карточки (под аватар)
+    // Растягиваем блок на всю ширину карточки (под аватар) и обновляем при ресайзе
     function applyWide(block, offset) {
-        if (block.dataset.wide === '1') return;
+        const prev = Number(block.dataset.xoff || 0);
+        if (block.dataset.wide === '1' && Math.abs(prev - offset) <= 1) return;
         block.dataset.wide = '1';
+        block.dataset.xoff = String(offset);
         block.classList.add('x-media-wide');
-        block.style.marginLeft = `-${offset}px`;
-        block.style.width = `calc(100% + ${offset}px)`;
-        block.style.maxWidth = 'none';
         block.style.setProperty('--xoff', offset + 'px');
     }
 
@@ -312,7 +511,12 @@
             // Уже заменено: проверяем, что узел не переиспользован для другого поста
             if (block.dataset.xwphoto) {
                 const own = block.querySelector('.xw-own img');
-                if (own && mediaId(own.src) !== id) own.src = hiRes(orig.src);
+                if (own && mediaId(own.src) !== id) {
+                    delete block.dataset.vfit;
+                    block.style.removeProperty('--ar');
+                    own.alt = orig.alt || '';
+                    own.src = hiRes(orig.src);
+                }
                 return;
             }
 
@@ -326,13 +530,14 @@
             block.dataset.xwphoto = '1';
             applyWide(block, offset);
 
-            const link = photo.closest('a');
             const wrap = document.createElement('div');
             wrap.className = 'xw-own';
             const img = document.createElement('img');
             img.alt = orig.alt || '';
             img.decoding = 'async';
             img.addEventListener('click', (e) => {
+                const link = block.querySelector('[data-testid="tweetPhoto"]')?.closest('a')
+                    || block.querySelector('a');
                 if (link) { e.preventDefault(); e.stopPropagation(); link.click(); }
             });
             img.addEventListener('load', () => {
@@ -342,7 +547,10 @@
                 block.classList.add('xw-photo-block');
             });
             img.addEventListener('error', () => {
-                wrap.remove(); // не вышло — остаётся оригинал X
+                wrap.remove(); // не вышло — возвращаем оригинал X
+                block.classList.remove('xw-photo-block');
+                delete block.dataset.xwphoto;
+                delete block.dataset.vfit;
             });
             img.src = hiRes(orig.src);
             wrap.appendChild(img);
@@ -350,23 +558,71 @@
         });
     }
 
+    function processArticle(article) {
+        try {
+            widenMedia(article);
+            replacePhoto(article);
+            fitMedia(article);
+        } catch (e) { }
+    }
+
+    // Очередь только для изменившихся твитов (без лишнего обхода всей страницы)
+    const dirtyArticles = new Set();
+    let fullRescan = false;
     let rafPending = false;
-    function scanTweets() {
-        if (rafPending) return;
-        rafPending = true;
-        requestAnimationFrame(() => {
-            rafPending = false;
-            document.querySelectorAll('article[data-testid="tweet"]').forEach((a) => {
-                try {
-                    widenMedia(a);
-                    replacePhoto(a);
-                    fitMedia(a);
-                } catch (e) { }
-            });
+
+    function flushArticles() {
+        rafPending = false;
+        const list = fullRescan
+            ? document.querySelectorAll('article[data-testid="tweet"]')
+            : Array.from(dirtyArticles);
+        fullRescan = false;
+        dirtyArticles.clear();
+        list.forEach((a) => {
+            if (a.isConnected) processArticle(a);
         });
     }
-    new MutationObserver(scanTweets).observe(document.documentElement, {
+
+    function scheduleFlush() {
+        if (rafPending) return;
+        rafPending = true;
+        requestAnimationFrame(flushArticles);
+    }
+
+    new MutationObserver((mutations) => {
+        for (const m of mutations) {
+            const targetEl = m.target instanceof Element ? m.target : null;
+            const parentArticle = targetEl?.closest?.('article[data-testid="tweet"]');
+            if (parentArticle) dirtyArticles.add(parentArticle);
+
+            for (const node of m.addedNodes) {
+                if (!(node instanceof Element)) continue;
+                if (node.matches('article[data-testid="tweet"]')) {
+                    dirtyArticles.add(node);
+                } else {
+                    node.querySelectorAll?.('article[data-testid="tweet"]').forEach((a) => dirtyArticles.add(a));
+                }
+            }
+        }
+        if (dirtyArticles.size > 0) scheduleFlush();
+    }).observe(document.documentElement, {
         childList: true,
         subtree: true,
+    });
+
+    // Начальный проход, если скрипт подключился уже после первичного рендера
+    onReady(() => {
+        fullRescan = true;
+        scheduleFlush();
+    });
+
+    // Пересчёт отступов при изменении размера окна (актуально для тайлинга в Hyprland)
+    let resizeTimer = null;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => {
+            fullRescan = true;
+            scheduleFlush();
+        }, 120);
     });
 })();
