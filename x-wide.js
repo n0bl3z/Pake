@@ -212,7 +212,7 @@
             align-items: stretch !important;
         }
 
-        /* ====== Колонка постов ====== */
+        /* ====== Колонка постов и карточки твитов на всю ширину ====== */
         div[data-testid="primaryColumn"] {
             max-width: 100% !important;
             width: 100% !important;
@@ -225,9 +225,17 @@
         }
         div[data-testid="primaryColumn"] > div,
         div[data-testid="primaryColumn"] section[role="region"],
-        div[data-testid="primaryColumn"] section[role="region"] > div {
+        div[data-testid="primaryColumn"] section[role="region"] > div,
+        div[data-testid="primaryColumn"] div:has(div[data-testid="cellInnerDiv"]),
+        div[data-testid="cellInnerDiv"],
+        div[data-testid="cellInnerDiv"] > div,
+        div[data-testid="cellInnerDiv"] > div > div,
+        article[data-testid="tweet"] {
             max-width: 100% !important;
             width: 100% !important;
+            min-width: 0 !important;
+            margin-left: 0 !important;
+            margin-right: 0 !important;
         }
 
         /* ====== Убираем боковые поля у карточек ====== */
@@ -238,6 +246,7 @@
         article[data-testid="tweet"] {
             padding-left: 8px !important;
             padding-right: 8px !important;
+            box-sizing: border-box !important;
         }
         .x-media-wide {
             box-sizing: border-box !important;
@@ -270,6 +279,13 @@
             width: var(--w) !important;
             margin-left: calc((100% + var(--xoff, 0px) - var(--w)) / 2 - var(--xoff, 0px)) !important;
             max-width: none !important;
+        }
+        [data-vfit="1"] > div,
+        [data-vfit="1"] [data-testid="videoComponent"],
+        [data-vfit="1"] [data-testid="videoPlayer"] {
+            width: 100% !important;
+            max-width: none !important;
+            max-height: none !important;
         }
 
         /* Фото внутри подогнанного блока — без собственного потолка по высоте */
@@ -691,7 +707,7 @@
             if (block.dataset.xwphoto) {
                 const stillSinglePhoto =
                     block.querySelectorAll('[data-testid="tweetPhoto"]').length === 1 &&
-                    !block.querySelector('[data-testid="User-Name"], [data-testid="tweetText"], [role="button"], button, video');
+                    !block.querySelector('[data-testid="User-Name"], [data-testid="tweetText"], [data-testid="sensitiveMediaWarning"], video');
                 if (!stillSinglePhoto) {
                     block.querySelector('.xw-own')?.remove();
                     block.classList.remove('xw-photo-block');
@@ -711,11 +727,11 @@
                 return;
             }
 
-            // Только одиночное фото; цитаты, сетки и блоки с кнопками
-            // (предупреждение о чувствительном контенте и т.п.) не трогаем
+            // Только одиночное фото; цитаты, сетки, видео и шторки чувствительного контента не трогаем
+            // (мелкие кнопки вроде ALT-бейджа или Grok не должны мешать масштабированию фото)
             if (block.querySelectorAll('[data-testid="tweetPhoto"]').length !== 1) return;
             if (block.querySelector(
-                '[data-testid="User-Name"], [data-testid="tweetText"], [role="button"], button, video'
+                '[data-testid="User-Name"], [data-testid="tweetText"], [data-testid="sensitiveMediaWarning"], video'
             )) return;
 
             block.dataset.xwphoto = '1';
