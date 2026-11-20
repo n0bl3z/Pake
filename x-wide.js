@@ -676,12 +676,24 @@
             const id = mediaId(orig.src);
             if (!id) return;
 
-            // Уже заменено: проверяем, что узел не переиспользован для другого поста
+            // Уже заменено: проверяем, что узел не переиспользован для другого типа поста (сетка/видео) или другого фото
             if (block.dataset.xwphoto) {
+                const stillSinglePhoto =
+                    block.querySelectorAll('[data-testid="tweetPhoto"]').length === 1 &&
+                    !block.querySelector('[data-testid="User-Name"], [data-testid="tweetText"], [role="button"], button, video');
+                if (!stillSinglePhoto) {
+                    block.querySelector('.xw-own')?.remove();
+                    block.classList.remove('xw-photo-block');
+                    delete block.dataset.xwphoto;
+                    delete block.dataset.vfit;
+                    block.style.removeProperty('--ar');
+                    return;
+                }
                 const own = block.querySelector('.xw-own img');
                 if (own && mediaId(own.src) !== id) {
                     delete block.dataset.vfit;
                     block.style.removeProperty('--ar');
+                    own.style.removeProperty('aspect-ratio');
                     own.alt = orig.alt || '';
                     own.src = pickPhotoSrc(orig.src);
                 }
