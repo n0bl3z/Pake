@@ -1,160 +1,110 @@
 (function () {
-  "use strict";
+    'use strict';
 
-  // ====== Безопасный доступ к localStorage ======
-  const store = {
-    get(key, fallback) {
-      try {
-        const v = localStorage.getItem(key);
-        return v === null ? fallback : v;
-      } catch (e) {
-        return fallback;
-      }
-    },
-    set(key, value) {
-      try {
-        localStorage.setItem(key, value);
-      } catch (e) {}
-    },
-  };
+    // ====== Безопасный доступ к localStorage ======
+    const store = {
+        get(key, fallback) {
+            try {
+                const v = localStorage.getItem(key);
+                return v === null ? fallback : v;
+            } catch (e) {
+                return fallback;
+            }
+        },
+        set(key, value) {
+            try {
+                localStorage.setItem(key, value);
+            } catch (e) { }
+        },
+    };
 
-  // ====== Ненавязчивый тост для обратной связи по хоткеям ======
-  let toastTimer = null;
-  function showToast(text) {
-    if (!document.body) return;
-    let el = document.getElementById("xw-toast");
-    if (!el) {
-      el = document.createElement("div");
-      el.id = "xw-toast";
-      document.body.appendChild(el);
+    // ====== Ненавязчивый тост для обратной связи по хоткеям ======
+    let toastTimer = null;
+    function showToast(text) {
+        if (!document.body) return;
+        let el = document.getElementById('xw-toast');
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'xw-toast';
+            document.body.appendChild(el);
+        }
+        el.textContent = text;
+        el.classList.add('visible');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => el.classList.remove('visible'), 1600);
     }
-    el.textContent = text;
-    el.classList.add("visible");
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => el.classList.remove("visible"), 1600);
-  }
 
-  // ====== Видео: не даём X ставить на паузу, пока оно на экране ======
-  (function keepVideoPlaying() {
-    const DEBUG = false; // true — писать в консоль, кто и когда вызывает паузу
-    const origPause = HTMLMediaElement.prototype.pause;
-    const origPlay = HTMLMediaElement.prototype.play;
+    // ====== Видео: не даём X ставить на паузу, пока оно на экране ======
+    (function keepVideoPlaying() {
+        const DEBUG = false; // true — писать в консоль, кто и когда вызывает паузу
+        const origPause = HTMLMediaElement.prototype.pause;
+        const origPlay = HTMLMediaElement.prototype.play;
 
-    // Ручные действия пользователя (клик, перемотка, K / пробел)
-    let lastUserAction = 0;
-    let pointerDown = false;
-    const mark = () => {
-      lastUserAction = Date.now();
-    };
-    window.addEventListener(
-      "pointerdown",
-      () => {
-        pointerDown = true;
-        mark();
-      },
-      true,
-    );
-    ["pointerup", "pointercancel", "mouseup", "click", "touchstart"].forEach(
-      (t) =>
-        window.addEventListener(
-          t,
-          () => {
-            pointerDown = false;
-            mark();
-          },
-          true,
-        ),
-    );
-    window.addEventListener(
-      "keydown",
-      (e) => {
-        if (e.code === "KeyK" || e.code === "Space") mark();
-      },
-      true,
-    );
-    const userIsActing = () => pointerDown || Date.now() - lastUserAction < 800;
+        // Ручные действия пользователя (клик, перемотка, K / пробел)
+        let lastUserAction = 0;
+        let pointerDown = false;
+        const mark = () => { lastUserAction = Date.now(); };
+        window.addEventListener('pointerdown', () => { pointerDown = true; mark(); }, true);
+        ['pointerup', 'pointercancel', 'mouseup', 'click', 'touchstart'].forEach((t) =>
+            window.addEventListener(t, () => { pointerDown = false; mark(); }, true)
+        );
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'KeyK' || e.code === 'Space') mark();
+        }, true);
+        const userIsActing = () => pointerDown || Date.now() - lastUserAction < 800;
 
-    const isOnScreen = (v) => {
-      const r = v.getBoundingClientRect();
-      return (
-        r.width > 0 &&
-        r.height > 0 &&
-        r.bottom > 0 &&
-        r.top < window.innerHeight &&
-        r.right > 0 &&
-        r.left < window.innerWidth
-      );
-    };
+        const isOnScreen = (v) => {
+            const r = v.getBoundingClientRect();
+            return r.width > 0 && r.height > 0 &&
+                r.bottom > 0 && r.top < window.innerHeight &&
+                r.right > 0 && r.left < window.innerWidth;
+        };
 
-    // 1) Блокируем программные вызовы pause()
-    HTMLMediaElement.prototype.pause = function () {
-      try {
-        if (
-          this instanceof HTMLVideoElement &&
-          !document.hidden &&
-          !userIsActing() &&
-          isOnScreen(this)
-        ) {
-          if (DEBUG) console.log("[x-wide] pause() blocked", new Error().stack);
-          return;
-        }
-      } catch (e) {}
-      return origPause.apply(this, arguments);
-    };
+        // 1) Блокируем программные вызовы pause()
+        HTMLMediaElement.prototype.pause = function () {
+            try {
+                if (this instanceof HTMLVideoElement && !document.hidden &&
+                    !userIsActing() && isOnScreen(this)) {
+                    if (DEBUG) console.log('[x-wide] pause() blocked', new Error().stack);
+                    return;
+                }
+            } catch (e) { }
+            return origPause.apply(this, arguments);
+        };
 
-    // 2) Если паузу всё же обошли другим путём — сразу возобновляем
-    const resumes = new WeakMap();
-    document.addEventListener(
-      "pause",
-      (e) => {
-        const v = e.target;
-        if (!(v instanceof HTMLVideoElement)) return;
-        if (document.hidden || v.ended || userIsActing() || !isOnScreen(v))
-          return;
-        const now = Date.now();
-        const hist = (resumes.get(v) || []).filter((t) => now - t < 1000);
-        if (hist.length >= 5) return; // защита от бесконечной борьбы с X
-        hist.push(now);
-        resumes.set(v, hist);
-        if (DEBUG) console.log("[x-wide] pause event -> resume");
-        const pr = origPlay.call(v);
-        if (pr && pr.catch) pr.catch(() => {});
-      },
-      true,
-    );
+        // 2) Если паузу всё же обошли другим путём — сразу возобновляем
+        const resumes = new WeakMap();
+        document.addEventListener('pause', (e) => {
+            const v = e.target;
+            if (!(v instanceof HTMLVideoElement)) return;
+            if (document.hidden || v.ended || userIsActing() || !isOnScreen(v)) return;
+            const now = Date.now();
+            const hist = (resumes.get(v) || []).filter((t) => now - t < 1000);
+            if (hist.length >= 5) return; // защита от бесконечной борьбы с X
+            hist.push(now);
+            resumes.set(v, hist);
+            if (DEBUG) console.log('[x-wide] pause event -> resume');
+            const pr = origPlay.call(v);
+            if (pr && pr.catch) pr.catch(() => { });
+        }, true);
 
-    // 3) Только одно видео со звуком одновременно: при включении звука у ролика
-    // ставим на паузу остальные играющие видео со звуком.
-    const silenceOthers = (active) => {
-      if (
-        !(active instanceof HTMLVideoElement) ||
-        active.muted ||
-        active.volume === 0
-      )
-        return;
-      document.querySelectorAll("video").forEach((other) => {
-        if (
-          other !== active &&
-          !other.paused &&
-          !other.muted &&
-          other.volume > 0
-        ) {
-          origPause.call(other);
-        }
-      });
-    };
-    document.addEventListener("play", (e) => silenceOthers(e.target), true);
-    document.addEventListener(
-      "volumechange",
-      (e) => {
-        if (e.target instanceof HTMLVideoElement && !e.target.paused)
-          silenceOthers(e.target);
-      },
-      true,
-    );
-  })();
+        // 3) Только одно видео со звуком одновременно: при включении звука у ролика
+        // ставим на паузу остальные играющие видео со звуком.
+        const silenceOthers = (active) => {
+            if (!(active instanceof HTMLVideoElement) || active.muted || active.volume === 0) return;
+            document.querySelectorAll('video').forEach((other) => {
+                if (other !== active && !other.paused && !other.muted && other.volume > 0) {
+                    origPause.call(other);
+                }
+            });
+        };
+        document.addEventListener('play', (e) => silenceOthers(e.target), true);
+        document.addEventListener('volumechange', (e) => {
+            if (e.target instanceof HTMLVideoElement && !e.target.paused) silenceOthers(e.target);
+        }, true);
+    })();
 
-  const css = `
+    const css = `
         /* ====== Тонкий скроллбар для оконного режима ====== */
         html {
             scrollbar-width: thin;
@@ -329,386 +279,470 @@
         }
     `;
 
-  // Замена GM_addStyle
-  function addStyle(text) {
-    const style = document.createElement("style");
-    style.textContent = text;
-    (document.head || document.documentElement).appendChild(style);
-  }
+    // Замена GM_addStyle
+    function addStyle(text) {
+        const style = document.createElement('style');
+        style.textContent = text;
+        (document.head || document.documentElement).appendChild(style);
+    }
 
-  // Скрипт в Pake может выполниться до появления DOM — ждём
-  function onReady(fn) {
-    if (document.documentElement) fn();
-    else
-      new MutationObserver((_, obs) => {
-        if (document.documentElement) {
-          obs.disconnect();
-          fn();
+    // Скрипт в Pake может выполниться до появления DOM — ждём
+    function onReady(fn) {
+        if (document.documentElement) fn();
+        else new MutationObserver((_, obs) => {
+            if (document.documentElement) { obs.disconnect(); fn(); }
+        }).observe(document, { childList: true });
+    }
+
+    onReady(() => addStyle(css));
+
+    // ====== Режим скрытой панели, Zen-режим, плавный скролл и фон темы ======
+    const NAV_STORAGE_KEY = 'xw-hide-nav';
+    const ZEN_STORAGE_KEY = 'xw-zen';
+    const SMOOTH_STORAGE_KEY = 'xw-smooth-scroll';
+    let navEnabled = store.get(NAV_STORAGE_KEY, '1') !== '0';
+    let zenEnabled = store.get(ZEN_STORAGE_KEY, '0') === '1';
+    let smoothEnabled = store.get(SMOOTH_STORAGE_KEY, '1') !== '0';
+
+    const syncBodyState = () => {
+        if (!document.body) return;
+        if (document.body.classList.contains('hide-nav') !== navEnabled) {
+            document.body.classList.toggle('hide-nav', navEnabled);
         }
-      }).observe(document, { childList: true });
-  }
-
-  onReady(() => addStyle(css));
-
-  // ====== Режим скрытой панели, Zen-режим и фон темы ======
-  const NAV_STORAGE_KEY = "xw-hide-nav";
-  const ZEN_STORAGE_KEY = "xw-zen";
-  let navEnabled = store.get(NAV_STORAGE_KEY, "1") !== "0";
-  let zenEnabled = store.get(ZEN_STORAGE_KEY, "0") === "1";
-
-  const syncBodyState = () => {
-    if (!document.body) return;
-    if (document.body.classList.contains("hide-nav") !== navEnabled) {
-      document.body.classList.toggle("hide-nav", navEnabled);
-    }
-    if (document.body.classList.contains("xw-zen") !== zenEnabled) {
-      document.body.classList.toggle("xw-zen", zenEnabled);
-    }
-    const bg = getComputedStyle(document.body).backgroundColor;
-    if (bg && bg !== "rgba(0, 0, 0, 0)" && bg !== "transparent") {
-      document.documentElement.style.setProperty("--xw-bg", bg);
-    }
-  };
-
-  const initBodyObserver = () => {
-    if (!document.body) return;
-    syncBodyState();
-    new MutationObserver(syncBodyState).observe(document.body, {
-      attributes: true,
-      attributeFilter: ["class", "style"],
-    });
-  };
-
-  if (document.body) initBodyObserver();
-  else
-    window.addEventListener("DOMContentLoaded", initBodyObserver, {
-      once: true,
-    });
-  window.addEventListener("popstate", syncBodyState);
-
-  // Открытие/закрытие панели по курсору с небольшой задержкой на закрытие
-  const HEADER_SEL = 'header[role="banner"]';
-  let closeTimer = null;
-  document.addEventListener(
-    "mouseover",
-    (e) => {
-      const h = e.target.closest && e.target.closest(HEADER_SEL);
-      if (!h) return;
-      if (closeTimer) {
-        clearTimeout(closeTimer);
-        closeTimer = null;
-      }
-      h.classList.add("nav-open");
-    },
-    true,
-  );
-  document.addEventListener(
-    "mouseout",
-    (e) => {
-      const h = e.target.closest && e.target.closest(HEADER_SEL);
-      if (h && !(e.relatedTarget && h.contains(e.relatedTarget))) {
-        closeTimer = setTimeout(() => h.classList.remove("nav-open"), 180);
-      }
-    },
-    true,
-  );
-
-  // ====== Горячие клавиши для оконного режима (Pake) ======
-  const isTyping = (e) => {
-    const t = e.target;
-    return (
-      t instanceof Element &&
-      (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)
-    );
-  };
-
-  async function copyCurrentUrl() {
-    const url = location.href;
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(url);
-        showToast("Ссылка скопирована");
-        return;
-      }
-    } catch (e) {}
-    const ta = document.createElement("textarea");
-    ta.value = url;
-    ta.style.position = "fixed";
-    ta.style.opacity = "0";
-    document.body.appendChild(ta);
-    ta.select();
-    try {
-      document.execCommand("copy");
-      showToast("Ссылка скопирована");
-    } catch (e) {
-      showToast("Не удалось скопировать");
-    }
-    ta.remove();
-  }
-
-  window.addEventListener("keydown", (e) => {
-    if (!e.altKey || e.ctrlKey || e.metaKey) return;
-
-    // Alt+B — скрыть/закрепить левую панель
-    if (e.code === "KeyB") {
-      e.preventDefault();
-      navEnabled = !navEnabled;
-      store.set(NAV_STORAGE_KEY, navEnabled ? "1" : "0");
-      syncBodyState();
-      showToast(navEnabled ? "Панель скрыта" : "Панель закреплена");
-      return;
-    }
-
-    // Alt+Z — скрыть/показать плавающие дроверы (DM / Grok)
-    if (e.code === "KeyZ") {
-      e.preventDefault();
-      zenEnabled = !zenEnabled;
-      store.set(ZEN_STORAGE_KEY, zenEnabled ? "1" : "0");
-      syncBodyState();
-      showToast(zenEnabled ? "Дроверы скрыты" : "Дроверы показаны");
-      return;
-    }
-
-    // Alt+C — скопировать текущий URL (удобно без адресной строки)
-    if (e.code === "KeyC") {
-      e.preventDefault();
-      copyCurrentUrl();
-      return;
-    }
-
-    if (isTyping(e)) return;
-
-    // Alt+Left / Alt+Right — навигация Назад / Вперёд
-    if (e.key === "ArrowLeft") {
-      e.preventDefault();
-      history.back();
-    } else if (e.key === "ArrowRight") {
-      e.preventDefault();
-      history.forward();
-    } else if (e.code === "KeyT") {
-      // Alt+T — плавно наверх
-      e.preventDefault();
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
-  });
-
-  const MEDIA_SEL =
-    '[data-testid="tweetPhoto"], [data-testid="videoPlayer"], [data-testid="card.wrapper"]';
-
-  // Блок медиа = прямой потомок колонки контента, внутри которого лежит el
-  function getBlock(article, el) {
-    const avatar = article.querySelector('[data-testid="Tweet-User-Avatar"]');
-    const nameEl = article.querySelector('[data-testid="User-Name"]');
-    if (!avatar || !nameEl) return null;
-
-    let column = nameEl.parentElement;
-    while (column && !column.contains(el)) column = column.parentElement;
-    if (!column) return null;
-
-    const offset = Math.round(
-      column.getBoundingClientRect().left - avatar.getBoundingClientRect().left,
-    );
-    if (offset <= 0) return null;
-
-    let block = el;
-    while (block.parentElement && block.parentElement !== column)
-      block = block.parentElement;
-    if (block.parentElement !== column) return null;
-    return { block, offset };
-  }
-
-  // Растягиваем блок на всю ширину карточки (под аватар) и обновляем при ресайзе
-  function applyWide(block, offset) {
-    const prev = Number(block.dataset.xoff || 0);
-    if (block.dataset.wide === "1" && Math.abs(prev - offset) <= 1) return;
-    block.dataset.wide = "1";
-    block.dataset.xoff = String(offset);
-    block.classList.add("x-media-wide");
-    block.style.setProperty("--xoff", offset + "px");
-  }
-
-  function widenMedia(article) {
-    article.querySelectorAll(MEDIA_SEL).forEach((m) => {
-      const info = getBlock(article, m);
-      if (info) applyWide(info.block, info.offset);
-    });
-  }
-
-  // Подгоняем блок видео: ширина = min(вся ширина, 90% высоты окна * пропорции)
-  function fitMedia(article) {
-    article
-      .querySelectorAll('[data-testid="videoPlayer"]')
-      .forEach((player) => {
-        const block = player.closest('[data-wide="1"]');
-        if (!block || block.dataset.vfit === "1") return;
-
-        const r = player.getBoundingClientRect();
-        if (r.width < 50 || r.height < 50) return; // ещё не отрисован — повторим
-        const ratio = r.width / r.height;
-        if (ratio < 0.2 || ratio > 5) return;
-        block.style.setProperty("--ar", ratio.toFixed(4));
-        block.dataset.vfit = "1";
-
-        // X сам сужает высокие медиа (max-height/max-width у обёрток).
-        // Снимаем эти ограничения и растягиваем узкие обёртки на весь блок.
-        const bw = block.getBoundingClientRect().width;
-        let el = player;
-        while (el && el !== block) {
-          el.style.setProperty("max-width", "none", "important");
-          el.style.setProperty("max-height", "none", "important");
-          if (el.getBoundingClientRect().width < bw - 8) {
-            el.style.setProperty("width", "100%", "important");
-          }
-          el = el.parentElement;
+        if (document.body.classList.contains('xw-zen') !== zenEnabled) {
+            document.body.classList.toggle('xw-zen', zenEnabled);
         }
-      });
-  }
-
-  // ====== Одиночные фото: показываем целиком, без обрезки X ======
-  // X режет высокие картинки в ленте. Вместо борьбы с его вёрсткой
-  // кладём в блок собственную <img> в оригинальном размере.
-  const mediaId = (u) => ((u || "").match(/\/media\/([^?/.]+)/) || [])[1];
-  const hiRes = (u) => u.replace(/([?&]name=)[^&]+/, "$1large");
-
-  function replacePhoto(article) {
-    article.querySelectorAll('[data-testid="tweetPhoto"]').forEach((photo) => {
-      const info = getBlock(article, photo);
-      if (!info) return;
-      const { block, offset } = info;
-      const orig = photo.querySelector("img");
-      if (!orig || !orig.src) return;
-      const id = mediaId(orig.src);
-      if (!id) return;
-
-      // Уже заменено: проверяем, что узел не переиспользован для другого поста
-      if (block.dataset.xwphoto) {
-        const own = block.querySelector(".xw-own img");
-        if (own && mediaId(own.src) !== id) {
-          delete block.dataset.vfit;
-          block.style.removeProperty("--ar");
-          own.alt = orig.alt || "";
-          own.src = hiRes(orig.src);
+        const bg = getComputedStyle(document.body).backgroundColor;
+        if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') {
+            document.documentElement.style.setProperty('--xw-bg', bg);
         }
-        return;
-      }
+    };
 
-      // Только одиночное фото; цитаты, сетки и блоки с кнопками
-      // (предупреждение о чувствительном контенте и т.п.) не трогаем
-      if (block.querySelectorAll('[data-testid="tweetPhoto"]').length !== 1)
-        return;
-      if (
-        block.querySelector(
-          '[data-testid="User-Name"], [data-testid="tweetText"], [role="button"], button, video',
-        )
-      )
-        return;
+    const initBodyObserver = () => {
+        if (!document.body) return;
+        syncBodyState();
+        new MutationObserver(syncBodyState).observe(document.body, {
+            attributes: true,
+            attributeFilter: ['class', 'style'],
+        });
+    };
 
-      block.dataset.xwphoto = "1";
-      applyWide(block, offset);
+    if (document.body) initBodyObserver();
+    else window.addEventListener('DOMContentLoaded', initBodyObserver, { once: true });
+    window.addEventListener('popstate', syncBodyState);
 
-      const wrap = document.createElement("div");
-      wrap.className = "xw-own";
-      const img = document.createElement("img");
-      img.alt = orig.alt || "";
-      img.decoding = "async";
-      img.addEventListener("click", (e) => {
-        const link =
-          block.querySelector('[data-testid="tweetPhoto"]')?.closest("a") ||
-          block.querySelector("a");
-        if (link) {
-          e.preventDefault();
-          e.stopPropagation();
-          link.click();
+    // Открытие/закрытие панели по курсору с небольшой задержкой на закрытие
+    const HEADER_SEL = 'header[role="banner"]';
+    let closeTimer = null;
+    document.addEventListener('mouseover', (e) => {
+        const h = e.target.closest && e.target.closest(HEADER_SEL);
+        if (!h) return;
+        if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
+        h.classList.add('nav-open');
+    }, true);
+    document.addEventListener('mouseout', (e) => {
+        const h = e.target.closest && e.target.closest(HEADER_SEL);
+        if (h && !(e.relatedTarget && h.contains(e.relatedTarget))) {
+            closeTimer = setTimeout(() => h.classList.remove('nav-open'), 180);
         }
-      });
-      img.addEventListener("load", () => {
-        if (!img.naturalWidth || !img.naturalHeight) return;
-        block.style.setProperty(
-          "--ar",
-          (img.naturalWidth / img.naturalHeight).toFixed(4),
+    }, true);
+
+    // ====== Горячие клавиши для оконного режима (Pake) ======
+    const isTyping = (e) => {
+        const t = e.target;
+        return t instanceof Element && (
+            t.tagName === 'INPUT' ||
+            t.tagName === 'TEXTAREA' ||
+            t.isContentEditable
         );
-        block.dataset.vfit = "1";
-        block.classList.add("xw-photo-block");
-      });
-      img.addEventListener("error", () => {
-        wrap.remove(); // не вышло — возвращаем оригинал X
-        block.classList.remove("xw-photo-block");
-        delete block.dataset.xwphoto;
-        delete block.dataset.vfit;
-      });
-      img.src = hiRes(orig.src);
-      wrap.appendChild(img);
-      block.appendChild(wrap);
-    });
-  }
+    };
 
-  function processArticle(article) {
-    try {
-      widenMedia(article);
-      replacePhoto(article);
-      fitMedia(article);
-    } catch (e) {}
-  }
-
-  // Очередь только для изменившихся твитов (без лишнего обхода всей страницы)
-  const dirtyArticles = new Set();
-  let fullRescan = false;
-  let rafPending = false;
-
-  function flushArticles() {
-    rafPending = false;
-    const list = fullRescan
-      ? document.querySelectorAll('article[data-testid="tweet"]')
-      : Array.from(dirtyArticles);
-    fullRescan = false;
-    dirtyArticles.clear();
-    list.forEach((a) => {
-      if (a.isConnected) processArticle(a);
-    });
-  }
-
-  function scheduleFlush() {
-    if (rafPending) return;
-    rafPending = true;
-    requestAnimationFrame(flushArticles);
-  }
-
-  new MutationObserver((mutations) => {
-    for (const m of mutations) {
-      const targetEl = m.target instanceof Element ? m.target : null;
-      const parentArticle = targetEl?.closest?.('article[data-testid="tweet"]');
-      if (parentArticle) dirtyArticles.add(parentArticle);
-
-      for (const node of m.addedNodes) {
-        if (!(node instanceof Element)) continue;
-        if (node.matches('article[data-testid="tweet"]')) {
-          dirtyArticles.add(node);
-        } else {
-          node
-            .querySelectorAll?.('article[data-testid="tweet"]')
-            .forEach((a) => dirtyArticles.add(a));
+    async function copyCurrentUrl() {
+        const url = location.href;
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(url);
+                showToast('Ссылка скопирована');
+                return;
+            }
+        } catch (e) { }
+        const ta = document.createElement('textarea');
+        ta.value = url;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+            document.execCommand('copy');
+            showToast('Ссылка скопирована');
+        } catch (e) {
+            showToast('Не удалось скопировать');
         }
-      }
+        ta.remove();
     }
-    if (dirtyArticles.size > 0) scheduleFlush();
-  }).observe(document.documentElement, {
-    childList: true,
-    subtree: true,
-  });
 
-  // Начальный проход, если скрипт подключился уже после первичного рендера
-  onReady(() => {
-    fullRescan = true;
-    scheduleFlush();
-  });
+    window.addEventListener('keydown', (e) => {
+        if (!e.altKey || e.ctrlKey || e.metaKey) return;
 
-  // Пересчёт отступов при изменении размера окна (актуально для тайлинга в Hyprland)
-  let resizeTimer = null;
-  window.addEventListener("resize", () => {
-    clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => {
-      fullRescan = true;
-      scheduleFlush();
-    }, 120);
-  });
+        // Alt+B — скрыть/закрепить левую панель
+        if (e.code === 'KeyB') {
+            e.preventDefault();
+            navEnabled = !navEnabled;
+            store.set(NAV_STORAGE_KEY, navEnabled ? '1' : '0');
+            syncBodyState();
+            showToast(navEnabled ? 'Панель скрыта' : 'Панель закреплена');
+            return;
+        }
+
+        // Alt+Z — скрыть/показать плавающие дроверы (DM / Grok)
+        if (e.code === 'KeyZ') {
+            e.preventDefault();
+            zenEnabled = !zenEnabled;
+            store.set(ZEN_STORAGE_KEY, zenEnabled ? '1' : '0');
+            syncBodyState();
+            showToast(zenEnabled ? 'Дроверы скрыты' : 'Дроверы показаны');
+            return;
+        }
+
+        // Alt+S — включить/выключить плавную прокрутку колёсиком
+        if (e.code === 'KeyS') {
+            e.preventDefault();
+            smoothEnabled = !smoothEnabled;
+            store.set(SMOOTH_STORAGE_KEY, smoothEnabled ? '1' : '0');
+            showToast(smoothEnabled ? 'Плавная прокрутка: вкл' : 'Плавная прокрутка: выкл');
+            return;
+        }
+
+        // Alt+C — скопировать текущий URL (удобно без адресной строки)
+        if (e.code === 'KeyC') {
+            e.preventDefault();
+            copyCurrentUrl();
+            return;
+        }
+
+        if (isTyping(e)) return;
+
+        // Alt+Left / Alt+Right — навигация Назад / Вперёд
+        if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+            history.back();
+        } else if (e.key === 'ArrowRight') {
+            e.preventDefault();
+            history.forward();
+        } else if (e.code === 'KeyT') {
+            // Alt+T — плавно наверх
+            e.preventDefault();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    });
+
+    // ====== Плавная прокрутка колёсиком (актуально для WebKitGTK / Pake) ======
+    // Используем относительный остаток (remaining), а не абсолютный targetY,
+    // чтобы не конфликтовать с виртуализацией ленты X, и dt-интерполяцию
+    // для одинаковой плавности на 60/120/144/240 Гц.
+    (function smoothWheelScroll() {
+        const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+        let targetEl = null;
+        let remaining = 0;
+        let rafId = 0;
+        let lastTs = 0;
+
+        const stop = () => {
+            remaining = 0;
+            targetEl = null;
+            if (rafId) {
+                cancelAnimationFrame(rafId);
+                rafId = 0;
+            }
+        };
+
+        const findScrollable = (startNode, deltaY) => {
+            const root = document.scrollingElement || document.documentElement;
+            let el = startNode instanceof Element ? startNode : null;
+            while (el && el !== document.body && el !== document.documentElement) {
+                const style = getComputedStyle(el);
+                const oy = style.overflowY;
+                if ((oy === 'auto' || oy === 'scroll' || oy === 'overlay') &&
+                    el.scrollHeight > el.clientHeight + 1) {
+                    const maxTop = el.scrollHeight - el.clientHeight;
+                    if ((deltaY > 0 && el.scrollTop < maxTop - 1) ||
+                        (deltaY < 0 && el.scrollTop > 1)) {
+                        return el;
+                    }
+                }
+                el = el.parentElement;
+            }
+            return root;
+        };
+
+        const step = (ts) => {
+            if (!targetEl || !targetEl.isConnected || !smoothEnabled || Math.abs(remaining) < 0.5) {
+                stop();
+                return;
+            }
+            const dt = lastTs ? Math.min((ts - lastTs) / 1000, 0.05) : 1 / 60;
+            lastTs = ts;
+
+            // Экспоненциальное затухание: плавно и без «вязкости»
+            const factor = 1 - Math.exp(-14 * dt);
+            const delta = remaining * factor;
+            remaining -= delta;
+
+            const root = document.scrollingElement || document.documentElement;
+            const before = targetEl.scrollTop;
+            if (targetEl === root) {
+                window.scrollBy(0, delta);
+            } else {
+                targetEl.scrollTop += delta;
+            }
+
+            // Упёрлись в край страницы/контейнера — останавливаем инерцию
+            if (Math.abs(targetEl.scrollTop - before) < 0.1 && Math.abs(delta) > 1) {
+                stop();
+                return;
+            }
+
+            rafId = requestAnimationFrame(step);
+        };
+
+        window.addEventListener('wheel', (e) => {
+            if (!smoothEnabled || reducedMotion.matches) return;
+            if (e.defaultPrevented || e.ctrlKey || e.metaKey) return;
+            if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+            if (e.deltaY === 0) return;
+
+            // Тачпад на Wayland уже даёт мелкие плавные пиксельные события — не мешаем ему
+            if (e.deltaMode === 0 && Math.abs(e.deltaY) < 25) return;
+
+            let dy = e.deltaY;
+            if (e.deltaMode === 1) dy *= 36;
+            else if (e.deltaMode === 2) dy *= window.innerHeight * 0.85;
+
+            const el = findScrollable(e.target, dy);
+            if (!el) return;
+
+            e.preventDefault();
+
+            if (targetEl !== el) {
+                targetEl = el;
+                remaining = 0;
+            }
+            // Ограничиваем накопление, чтобы при быстрой прокрутке не было задержки
+            remaining = Math.max(-1600, Math.min(1600, remaining + dy * 1.15));
+
+            if (!rafId) {
+                lastTs = 0;
+                rafId = requestAnimationFrame(step);
+            }
+        }, { passive: false });
+
+        window.addEventListener('pointerdown', stop, true);
+        window.addEventListener('keydown', (e) => {
+            if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', 'Space'].includes(e.code)) {
+                stop();
+            }
+        }, true);
+        window.addEventListener('popstate', stop);
+    })();
+
+    const MEDIA_SEL =
+        '[data-testid="tweetPhoto"], [data-testid="videoPlayer"], [data-testid="card.wrapper"]';
+
+    // Блок медиа = прямой потомок колонки контента, внутри которого лежит el
+    function getBlock(article, el) {
+        const avatar = article.querySelector('[data-testid="Tweet-User-Avatar"]');
+        const nameEl = article.querySelector('[data-testid="User-Name"]');
+        if (!avatar || !nameEl) return null;
+
+        let column = nameEl.parentElement;
+        while (column && !column.contains(el)) column = column.parentElement;
+        if (!column) return null;
+
+        const offset = Math.round(column.getBoundingClientRect().left - avatar.getBoundingClientRect().left);
+        if (offset <= 0) return null;
+
+        let block = el;
+        while (block.parentElement && block.parentElement !== column) block = block.parentElement;
+        if (block.parentElement !== column) return null;
+        return { block, offset };
+    }
+
+    // Растягиваем блок на всю ширину карточки (под аватар) и обновляем при ресайзе
+    function applyWide(block, offset) {
+        const prev = Number(block.dataset.xoff || 0);
+        if (block.dataset.wide === '1' && Math.abs(prev - offset) <= 1) return;
+        block.dataset.wide = '1';
+        block.dataset.xoff = String(offset);
+        block.classList.add('x-media-wide');
+        block.style.setProperty('--xoff', offset + 'px');
+    }
+
+    function widenMedia(article) {
+        article.querySelectorAll(MEDIA_SEL).forEach((m) => {
+            const info = getBlock(article, m);
+            if (info) applyWide(info.block, info.offset);
+        });
+    }
+
+    // Подгоняем блок видео: ширина = min(вся ширина, 90% высоты окна * пропорции)
+    function fitMedia(article) {
+        article.querySelectorAll('[data-testid="videoPlayer"]').forEach((player) => {
+            const block = player.closest('[data-wide="1"]');
+            if (!block || block.dataset.vfit === '1') return;
+
+            const r = player.getBoundingClientRect();
+            if (r.width < 50 || r.height < 50) return; // ещё не отрисован — повторим
+            const ratio = r.width / r.height;
+            if (ratio < 0.2 || ratio > 5) return;
+            block.style.setProperty('--ar', ratio.toFixed(4));
+            block.dataset.vfit = '1';
+
+            // X сам сужает высокие медиа (max-height/max-width у обёрток).
+            // Снимаем эти ограничения и растягиваем узкие обёртки на весь блок.
+            const bw = block.getBoundingClientRect().width;
+            let el = player;
+            while (el && el !== block) {
+                el.style.setProperty('max-width', 'none', 'important');
+                el.style.setProperty('max-height', 'none', 'important');
+                if (el.getBoundingClientRect().width < bw - 8) {
+                    el.style.setProperty('width', '100%', 'important');
+                }
+                el = el.parentElement;
+            }
+        });
+    }
+
+    // ====== Одиночные фото: показываем целиком, без обрезки X ======
+    // X режет высокие картинки в ленте. Вместо борьбы с его вёрсткой
+    // кладём в блок собственную <img> в оригинальном размере.
+    const mediaId = (u) => ((u || '').match(/\/media\/([^?/.]+)/) || [])[1];
+    const hiRes = (u) => u.replace(/([?&]name=)[^&]+/, '$1large');
+
+    function replacePhoto(article) {
+        article.querySelectorAll('[data-testid="tweetPhoto"]').forEach((photo) => {
+            const info = getBlock(article, photo);
+            if (!info) return;
+            const { block, offset } = info;
+            const orig = photo.querySelector('img');
+            if (!orig || !orig.src) return;
+            const id = mediaId(orig.src);
+            if (!id) return;
+
+            // Уже заменено: проверяем, что узел не переиспользован для другого поста
+            if (block.dataset.xwphoto) {
+                const own = block.querySelector('.xw-own img');
+                if (own && mediaId(own.src) !== id) {
+                    delete block.dataset.vfit;
+                    block.style.removeProperty('--ar');
+                    own.alt = orig.alt || '';
+                    own.src = hiRes(orig.src);
+                }
+                return;
+            }
+
+            // Только одиночное фото; цитаты, сетки и блоки с кнопками
+            // (предупреждение о чувствительном контенте и т.п.) не трогаем
+            if (block.querySelectorAll('[data-testid="tweetPhoto"]').length !== 1) return;
+            if (block.querySelector(
+                '[data-testid="User-Name"], [data-testid="tweetText"], [role="button"], button, video'
+            )) return;
+
+            block.dataset.xwphoto = '1';
+            applyWide(block, offset);
+
+            const wrap = document.createElement('div');
+            wrap.className = 'xw-own';
+            const img = document.createElement('img');
+            img.alt = orig.alt || '';
+            img.decoding = 'async';
+            img.addEventListener('click', (e) => {
+                const link = block.querySelector('[data-testid="tweetPhoto"]')?.closest('a')
+                    || block.querySelector('a');
+                if (link) { e.preventDefault(); e.stopPropagation(); link.click(); }
+            });
+            img.addEventListener('load', () => {
+                if (!img.naturalWidth || !img.naturalHeight) return;
+                block.style.setProperty('--ar', (img.naturalWidth / img.naturalHeight).toFixed(4));
+                block.dataset.vfit = '1';
+                block.classList.add('xw-photo-block');
+            });
+            img.addEventListener('error', () => {
+                wrap.remove(); // не вышло — возвращаем оригинал X
+                block.classList.remove('xw-photo-block');
+                delete block.dataset.xwphoto;
+                delete block.dataset.vfit;
+            });
+            img.src = hiRes(orig.src);
+            wrap.appendChild(img);
+            block.appendChild(wrap);
+        });
+    }
+
+    function processArticle(article) {
+        try {
+            widenMedia(article);
+            replacePhoto(article);
+            fitMedia(article);
+        } catch (e) { }
+    }
+
+    // Очередь только для изменившихся твитов (без лишнего обхода всей страницы)
+    const dirtyArticles = new Set();
+    let fullRescan = false;
+    let rafPending = false;
+
+    function flushArticles() {
+        rafPending = false;
+        const list = fullRescan
+            ? document.querySelectorAll('article[data-testid="tweet"]')
+            : Array.from(dirtyArticles);
+        fullRescan = false;
+        dirtyArticles.clear();
+        list.forEach((a) => {
+            if (a.isConnected) processArticle(a);
+        });
+    }
+
+    function scheduleFlush() {
+        if (rafPending) return;
+        rafPending = true;
+        requestAnimationFrame(flushArticles);
+    }
+
+    new MutationObserver((mutations) => {
+        for (const m of mutations) {
+            const targetEl = m.target instanceof Element ? m.target : null;
+            const parentArticle = targetEl?.closest?.('article[data-testid="tweet"]');
+            if (parentArticle) dirtyArticles.add(parentArticle);
+
+            for (const node of m.addedNodes) {
+                if (!(node instanceof Element)) continue;
+                if (node.matches('article[data-testid="tweet"]')) {
+                    dirtyArticles.add(node);
+                } else {
+                    node.querySelectorAll?.('article[data-testid="tweet"]').forEach((a) => dirtyArticles.add(a));
+                }
+            }
+        }
+        if (dirtyArticles.size > 0) scheduleFlush();
+    }).observe(document.documentElement, {
+        childList: true,
+        subtree: true,
+    });
+
+    // Начальный проход, если скрипт подключился уже после первичного рендера
+    onReady(() => {
+        fullRescan = true;
+        scheduleFlush();
+    });
+
+    // Пересчёт отступов при изменении размера окна (актуально для тайлинга в Hyprland)
+    let resizeTimer = null;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => {
+            fullRescan = true;
+            scheduleFlush();
+        }, 120);
+    });
 })();
