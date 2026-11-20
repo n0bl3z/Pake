@@ -51,7 +51,22 @@
         window.addEventListener('keydown', (e) => {
             if (e.code === 'KeyK' || e.code === 'Space') mark();
         }, true);
-        const userIsActing = () => pointerDown || Date.now() - lastUserAction < 800;
+        const userIsActing = () => pointerDown || Date.now() - lastUserAction < 1500;
+
+        // Не вмешиваемся, когда открыто меню настроек/качества или модалка,
+        // а также пока видео буферизуется или перематывается — иначе ломается загрузка потока.
+        const isUiMenuOpen = () => !!document.querySelector(
+            '[role="menu"], [data-testid="Dropdown"], [role="dialog"]'
+        );
+        const canKeepPlaying = (v) =>
+            v instanceof HTMLVideoElement &&
+            !document.hidden &&
+            !v.ended &&
+            !v.seeking &&
+            v.readyState >= 3 &&
+            !userIsActing() &&
+            !isUiMenuOpen() &&
+            isOnScreen(v);
 
         const isOnScreen = (v) => {
             const r = v.getBoundingClientRect();
@@ -60,11 +75,12 @@
                 r.right > 0 && r.left < window.innerWidth;
         };
 
-        // 1) Блокируем программные вызовы pause()
+        const selfPaused = new WeakSet();
+
+        // 1) Блокируем программные вызовы pause() (например при потере фокуса окна)
         HTMLMediaElement.prototype.pause = function () {
             try {
-                if (this instanceof HTMLVideoElement && !document.hidden &&
-                    !userIsActing() && isOnScreen(this)) {
+                if (!selfPaused.has(this) && canKeepPlaying(this)) {
                     if (DEBUG) console.log('[x-wide] pause() blocked', new Error().stack);
                     return;
                 }
@@ -77,7 +93,8 @@
         document.addEventListener('pause', (e) => {
             const v = e.target;
             if (!(v instanceof HTMLVideoElement)) return;
-            if (document.hidden || v.ended || userIsActing() || !isOnScreen(v)) return;
+            if (selfPaused.has(v)) { selfPaused.delete(v); return; }
+            if (!canKeepPlaying(v)) return;
             const now = Date.now();
             const hist = (resumes.get(v) || []).filter((t) => now - t < 1000);
             if (hist.length >= 5) return; // защита от бесконечной борьбы с X
@@ -94,6 +111,7 @@
             if (!(active instanceof HTMLVideoElement) || active.muted || active.volume === 0) return;
             document.querySelectorAll('video').forEach((other) => {
                 if (other !== active && !other.paused && !other.muted && other.volume > 0) {
+                    selfPaused.add(other);
                     origPause.call(other);
                 }
             });
@@ -133,40 +151,38 @@
             transform: translateX(-50%) translateY(0);
         }
 
-        /* ====== Левая панель: прячем за край только на десктопной ширине ====== */
-        @media (min-width: 500px) {
-            body.hide-nav header[role="banner"] {
-                position: fixed !important;
-                top: 0 !important;
-                left: 0 !important;
-                bottom: 0 !important;
-                z-index: 1000 !important;
-                background-color: var(--xw-bg, rgb(0, 0, 0)) !important;
-                border-right: 1px solid rgba(128, 128, 128, 0.22) !important;
-                transform: translateX(calc(-100% + 12px)) !important;
-                transition: transform 0.2s ease, box-shadow 0.2s ease !important;
-                height: 100% !important;
-            }
-            body.hide-nav header[role="banner"]::after {
-                content: "";
-                position: absolute;
-                top: 50%;
-                right: 4px;
-                width: 3px;
-                height: 36px;
-                transform: translateY(-50%);
-                border-radius: 999px;
-                background: rgba(128, 128, 128, 0.45);
-                pointer-events: none;
-                transition: opacity 0.18s ease;
-            }
-            body.hide-nav header[role="banner"].nav-open {
-                transform: translateX(0) !important;
-                box-shadow: 6px 0 24px rgba(0, 0, 0, 0.45) !important;
-            }
-            body.hide-nav header[role="banner"].nav-open::after {
-                opacity: 0;
-            }
+        /* ====== Левая панель: прячем за край ====== */
+        body.hide-nav header[role="banner"] {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            bottom: 0 !important;
+            z-index: 1000 !important;
+            background-color: var(--xw-bg, rgb(0, 0, 0)) !important;
+            border-right: 1px solid rgba(128, 128, 128, 0.22) !important;
+            transform: translateX(calc(-100% + 12px)) !important;
+            transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+            height: 100% !important;
+        }
+        body.hide-nav header[role="banner"]::after {
+            content: "";
+            position: absolute;
+            top: 50%;
+            right: 4px;
+            width: 3px;
+            height: 36px;
+            transform: translateY(-50%);
+            border-radius: 999px;
+            background: rgba(128, 128, 128, 0.45);
+            pointer-events: none;
+            transition: opacity 0.18s ease;
+        }
+        body.hide-nav header[role="banner"].nav-open {
+            transform: translateX(0) !important;
+            box-shadow: 6px 0 24px rgba(0, 0, 0, 0.45) !important;
+        }
+        body.hide-nav header[role="banner"].nav-open::after {
+            opacity: 0;
         }
 
         /* ====== Zen-режим (Alt+Z): убираем нижние плавающие дроверы ====== */
@@ -233,11 +249,13 @@
         div[data-testid="tweetPhoto"] img {
             object-fit: contain !important;
             max-height: 85vh !important;
+            max-height: 85dvh !important;
         }
 
         /* ====== Видео и фото: по пропорциям, но не выше окна ====== */
         [data-vfit="1"] {
             --w: min(calc(100% + var(--xoff, 0px)), calc(90vh * var(--ar, 1)));
+            --w: min(calc(100% + var(--xoff, 0px)), calc(90dvh * var(--ar, 1)));
             width: var(--w) !important;
             margin-left: calc((100% + var(--xoff, 0px) - var(--w)) / 2 - var(--xoff, 0px)) !important;
             max-width: none !important;
@@ -558,8 +576,9 @@
         while (column && !column.contains(el)) column = column.parentElement;
         if (!column) return null;
 
-        const offset = Math.round(column.getBoundingClientRect().left - avatar.getBoundingClientRect().left);
-        if (offset <= 0) return null;
+        // На узких окнах (размер телефона) offset может быть 0 — всё равно обрабатываем блок,
+        // чтобы replacePhoto() и fitMedia() не пропускали медиа.
+        const offset = Math.max(0, Math.round(column.getBoundingClientRect().left - avatar.getBoundingClientRect().left));
 
         let block = el;
         while (block.parentElement && block.parentElement !== column) block = block.parentElement;
@@ -569,7 +588,7 @@
 
     // Растягиваем блок на всю ширину карточки (под аватар) и обновляем при ресайзе
     function applyWide(block, offset) {
-        const prev = Number(block.dataset.xoff || 0);
+        const prev = Number(block.dataset.xoff || -1);
         if (block.dataset.wide === '1' && Math.abs(prev - offset) <= 1) return;
         block.dataset.wide = '1';
         block.dataset.xoff = String(offset);
@@ -584,6 +603,23 @@
         });
     }
 
+    // ResizeObserver ловит плееры, которые на первом кадре ещё имели нулевой размер
+    const videoRO = typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver((entries) => {
+            for (const entry of entries) {
+                const player = entry.target;
+                if (entry.contentRect.width >= 50 && entry.contentRect.height >= 50) {
+                    videoRO.unobserve(player);
+                    const article = player.closest('article[data-testid="tweet"]');
+                    if (article) {
+                        dirtyArticles.add(article);
+                        scheduleFlush();
+                    }
+                }
+            }
+        })
+        : null;
+
     // Подгоняем блок видео: ширина = min(вся ширина, 90% высоты окна * пропорции)
     function fitMedia(article) {
         article.querySelectorAll('[data-testid="videoPlayer"]').forEach((player) => {
@@ -591,7 +627,11 @@
             if (!block || block.dataset.vfit === '1') return;
 
             const r = player.getBoundingClientRect();
-            if (r.width < 50 || r.height < 50) return; // ещё не отрисован — повторим
+            if (r.width < 50 || r.height < 50) {
+                // Ещё не отрисован — подписываемся на ResizeObserver, чтобы точно пересчитать
+                if (videoRO) videoRO.observe(player);
+                return;
+            }
             const ratio = r.width / r.height;
             if (ratio < 0.2 || ratio > 5) return;
             block.style.setProperty('--ar', ratio.toFixed(4));
@@ -616,7 +656,15 @@
     // X режет высокие картинки в ленте. Вместо борьбы с его вёрсткой
     // кладём в блок собственную <img> в оригинальном размере.
     const mediaId = (u) => ((u || '').match(/\/media\/([^?/.]+)/) || [])[1];
-    const hiRes = (u) => u.replace(/([?&]name=)[^&]+/, '$1large');
+    // Если X уже загрузил нормальный размер (medium / 900x900 / large / orig),
+    // берём тот же URL из кэша браузера, чтобы не качать каждую картинку дважды.
+    const pickPhotoSrc = (u) => {
+        if (!u) return u;
+        if (/[?&]name=(small|thumb|120x120|240x240|360x360)(?:&|$)/.test(u)) {
+            return u.replace(/([?&]name=)[^&]+/, '$1medium');
+        }
+        return u;
+    };
 
     function replacePhoto(article) {
         article.querySelectorAll('[data-testid="tweetPhoto"]').forEach((photo) => {
@@ -635,7 +683,7 @@
                     delete block.dataset.vfit;
                     block.style.removeProperty('--ar');
                     own.alt = orig.alt || '';
-                    own.src = hiRes(orig.src);
+                    own.src = pickPhotoSrc(orig.src);
                 }
                 return;
             }
@@ -662,6 +710,7 @@
             });
             img.addEventListener('load', () => {
                 if (!img.naturalWidth || !img.naturalHeight) return;
+                img.style.aspectRatio = `${img.naturalWidth} / ${img.naturalHeight}`;
                 block.style.setProperty('--ar', (img.naturalWidth / img.naturalHeight).toFixed(4));
                 block.dataset.vfit = '1';
                 block.classList.add('xw-photo-block');
@@ -672,7 +721,7 @@
                 delete block.dataset.xwphoto;
                 delete block.dataset.vfit;
             });
-            img.src = hiRes(orig.src);
+            img.src = pickPhotoSrc(orig.src);
             wrap.appendChild(img);
             block.appendChild(wrap);
         });
@@ -728,6 +777,8 @@
     }).observe(document.documentElement, {
         childList: true,
         subtree: true,
+        attributes: true,
+        attributeFilter: ['src'],
     });
 
     // Начальный проход, если скрипт подключился уже после первичного рендера
